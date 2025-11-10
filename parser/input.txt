@@ -1,6 +1,4 @@
 int x  = 12;
-x = 503;
-
 char y = 'b';
 int to_day_is_what;
 
