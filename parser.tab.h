@@ -35,8 +35,8 @@
    especially those whose name start with YY_ or yy_.  They are
    private implementation details that can be changed or removed.  */
 
-#ifndef YY_YY_Y_TAB_H_INCLUDED
-# define YY_YY_Y_TAB_H_INCLUDED
+#ifndef YY_YY_PARSER_TAB_H_INCLUDED
+# define YY_YY_PARSER_TAB_H_INCLUDED
 /* Debug traces.  */
 #ifndef YYDEBUG
 # define YYDEBUG 0
@@ -54,50 +54,30 @@ extern int yydebug;
     YYEOF = 0,                     /* "end of file"  */
     YYerror = 256,                 /* error  */
     YYUNDEF = 257,                 /* "invalid token"  */
-    NUMBER = 258,                  /* NUMBER  */
-    CHARACTER = 259,               /* CHARACTER  */
-    ID = 260,                      /* ID  */
-    INT = 261,                     /* INT  */
-    CHAR = 262,                    /* CHAR  */
-    ADDITION = 263,                /* ADDITION  */
-    SUBTRACTION = 264,             /* SUBTRACTION  */
-    MULTIPLICATION = 265,          /* MULTIPLICATION  */
-    DIVISION = 266,                /* DIVISION  */
-    SEMICOLON = 267,               /* SEMICOLON  */
-    COMMA = 268,                   /* COMMA  */
-    ASSIGNMENT = 269               /* ASSIGNMENT  */
+    DATA_TYPE = 258,               /* DATA_TYPE  */
+    VARIABLE = 259,                /* VARIABLE  */
+    ASSIGNMENT = 260,              /* ASSIGNMENT  */
+    DISPLAY = 261,                 /* DISPLAY  */
+    COMMA = 262,                   /* COMMA  */
+    SEMI = 263,                    /* SEMI  */
+    STRING = 264,                  /* STRING  */
+    INTEGER = 265,                 /* INTEGER  */
+    CHARACTER = 266                /* CHARACTER  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
-/* Token kinds.  */
-#define YYEMPTY -2
-#define YYEOF 0
-#define YYerror 256
-#define YYUNDEF 257
-#define NUMBER 258
-#define CHARACTER 259
-#define ID 260
-#define INT 261
-#define CHAR 262
-#define ADDITION 263
-#define SUBTRACTION 264
-#define MULTIPLICATION 265
-#define DIVISION 266
-#define SEMICOLON 267
-#define COMMA 268
-#define ASSIGNMENT 269
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 30 "parser.y"
+#line 79 "parser.y"
 
     int num;
-    char c;
+    char character;
     char *str;
 
-#line 101 "y.tab.h"
+#line 81 "parser.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -112,4 +92,4 @@ extern YYSTYPE yylval;
 int yyparse (void);
 
 
-#endif /* !YY_YY_Y_TAB_H_INCLUDED  */
+#endif /* !YY_YY_PARSER_TAB_H_INCLUDED  */

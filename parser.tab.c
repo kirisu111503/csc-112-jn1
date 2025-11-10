@@ -69,34 +69,81 @@
 /* First part of user prologue.  */
 #line 1 "parser.y"
 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include <ctype.h>
 
-void yyerror(const char *s);
-int yylex(void);
+typedef struct errorList{
+   int line_error;
+   char *error_type;
+   struct errorList *next;
+}errorList;
 
-/* Symbol table structure */
-typedef struct {
-    char *name;
-    char type;  /* 'i' for int, 'c' for char */
+
+// Symbol table structure
+typedef struct vars{
+    char *id;
+    int data_type;
     union {
-        int int_val;
-        char char_val;
-    } value;
-} Symbol;
+        int val;      // for int/char
+        char *str_val; // for string
+    } data;
+    struct vars *next;
+} vars;
 
-Symbol symbol_table[100];
-int symbol_count = 0;
-int has_error = 0;  /* Flag to track errors */
+typedef struct logs{
+    char *info;
+    int line;
+    int isError;
+    struct logs *next;
+}logs;
 
-/* Helper functions */
-int lookup_symbol(char *name);
-int add_symbol(char *name, char type);  /* Returns 1 on success, 0 on error */
-void set_symbol_value(char *name, int value);
-int get_symbol_value(char *name);
 
-#line 100 "y.tab.c"
+//Initialization of structure
+//Variables
+// extern vars *headVars;
+// extern vars *tailVars ;
+
+//errors
+// extern errorList *headErrList;
+// extern errorList *tailErrList;
+
+//logs
+// extern logs *headLogs;
+// extern logs *tailLogs;
+
+// extern char *currentDataType;
+
+extern int yylineno;
+
+vars *headVars = NULL;
+vars *tailVars = NULL;
+errorList *headErrList = NULL;
+errorList *tailErrList = NULL;
+logs *headLogs = NULL;
+logs *tailLogs = NULL;
+char *currentDataType = NULL;
+int isRecovering = 0;
+
+extern int yylex();
+void yyerror(const char *fmt, ...);
+void printErrorTable();
+void cleanupErrorTable();
+int getVariableValue(char *variableName);
+void cleanupVariableTable();
+const char* typeName(char dt);
+vars* getVariable(char* variable);
+void createVariable(char *DTYPE, char* variable, int val, char *str_val);
+void variableReAssignment(char* variable, int val, char *str_val);
+void printVariableTable();
+
+
+
+
+#line 147 "parser.tab.c"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -119,86 +166,7 @@ int get_symbol_value(char *name);
 #  endif
 # endif
 
-/* Use api.header.include to #include this header
-   instead of duplicating it here.  */
-#ifndef YY_YY_Y_TAB_H_INCLUDED
-# define YY_YY_Y_TAB_H_INCLUDED
-/* Debug traces.  */
-#ifndef YYDEBUG
-# define YYDEBUG 0
-#endif
-#if YYDEBUG
-extern int yydebug;
-#endif
-
-/* Token kinds.  */
-#ifndef YYTOKENTYPE
-# define YYTOKENTYPE
-  enum yytokentype
-  {
-    YYEMPTY = -2,
-    YYEOF = 0,                     /* "end of file"  */
-    YYerror = 256,                 /* error  */
-    YYUNDEF = 257,                 /* "invalid token"  */
-    NUMBER = 258,                  /* NUMBER  */
-    CHARACTER = 259,               /* CHARACTER  */
-    ID = 260,                      /* ID  */
-    INT = 261,                     /* INT  */
-    CHAR = 262,                    /* CHAR  */
-    ADDITION = 263,                /* ADDITION  */
-    SUBTRACTION = 264,             /* SUBTRACTION  */
-    MULTIPLICATION = 265,          /* MULTIPLICATION  */
-    DIVISION = 266,                /* DIVISION  */
-    SEMICOLON = 267,               /* SEMICOLON  */
-    COMMA = 268,                   /* COMMA  */
-    ASSIGNMENT = 269               /* ASSIGNMENT  */
-  };
-  typedef enum yytokentype yytoken_kind_t;
-#endif
-/* Token kinds.  */
-#define YYEMPTY -2
-#define YYEOF 0
-#define YYerror 256
-#define YYUNDEF 257
-#define NUMBER 258
-#define CHARACTER 259
-#define ID 260
-#define INT 261
-#define CHAR 262
-#define ADDITION 263
-#define SUBTRACTION 264
-#define MULTIPLICATION 265
-#define DIVISION 266
-#define SEMICOLON 267
-#define COMMA 268
-#define ASSIGNMENT 269
-
-/* Value type.  */
-#if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-union YYSTYPE
-{
-#line 30 "parser.y"
-
-    int num;
-    char c;
-    char *str;
-
-#line 187 "y.tab.c"
-
-};
-typedef union YYSTYPE YYSTYPE;
-# define YYSTYPE_IS_TRIVIAL 1
-# define YYSTYPE_IS_DECLARED 1
-#endif
-
-
-extern YYSTYPE yylval;
-
-
-int yyparse (void);
-
-
-#endif /* !YY_YY_Y_TAB_H_INCLUDED  */
+#include "parser.tab.h"
 /* Symbol kind.  */
 enum yysymbol_kind_t
 {
@@ -206,28 +174,33 @@ enum yysymbol_kind_t
   YYSYMBOL_YYEOF = 0,                      /* "end of file"  */
   YYSYMBOL_YYerror = 1,                    /* error  */
   YYSYMBOL_YYUNDEF = 2,                    /* "invalid token"  */
-  YYSYMBOL_NUMBER = 3,                     /* NUMBER  */
-  YYSYMBOL_CHARACTER = 4,                  /* CHARACTER  */
-  YYSYMBOL_ID = 5,                         /* ID  */
-  YYSYMBOL_INT = 6,                        /* INT  */
-  YYSYMBOL_CHAR = 7,                       /* CHAR  */
-  YYSYMBOL_ADDITION = 8,                   /* ADDITION  */
-  YYSYMBOL_SUBTRACTION = 9,                /* SUBTRACTION  */
-  YYSYMBOL_MULTIPLICATION = 10,            /* MULTIPLICATION  */
-  YYSYMBOL_DIVISION = 11,                  /* DIVISION  */
-  YYSYMBOL_SEMICOLON = 12,                 /* SEMICOLON  */
-  YYSYMBOL_COMMA = 13,                     /* COMMA  */
-  YYSYMBOL_ASSIGNMENT = 14,                /* ASSIGNMENT  */
-  YYSYMBOL_YYACCEPT = 15,                  /* $accept  */
-  YYSYMBOL_program = 16,                   /* program  */
-  YYSYMBOL_statement = 17,                 /* statement  */
-  YYSYMBOL_declaration = 18,               /* declaration  */
-  YYSYMBOL_int_declaration_list = 19,      /* int_declaration_list  */
-  YYSYMBOL_char_declaration_list = 20,     /* char_declaration_list  */
-  YYSYMBOL_assignment = 21,                /* assignment  */
-  YYSYMBOL_expression = 22,                /* expression  */
-  YYSYMBOL_term = 23,                      /* term  */
-  YYSYMBOL_factor = 24                     /* factor  */
+  YYSYMBOL_DATA_TYPE = 3,                  /* DATA_TYPE  */
+  YYSYMBOL_VARIABLE = 4,                   /* VARIABLE  */
+  YYSYMBOL_ASSIGNMENT = 5,                 /* ASSIGNMENT  */
+  YYSYMBOL_DISPLAY = 6,                    /* DISPLAY  */
+  YYSYMBOL_COMMA = 7,                      /* COMMA  */
+  YYSYMBOL_SEMI = 8,                       /* SEMI  */
+  YYSYMBOL_STRING = 9,                     /* STRING  */
+  YYSYMBOL_INTEGER = 10,                   /* INTEGER  */
+  YYSYMBOL_CHARACTER = 11,                 /* CHARACTER  */
+  YYSYMBOL_12_ = 12,                       /* '+'  */
+  YYSYMBOL_13_ = 13,                       /* '-'  */
+  YYSYMBOL_14_ = 14,                       /* '*'  */
+  YYSYMBOL_15_ = 15,                       /* '/'  */
+  YYSYMBOL_16_ = 16,                       /* '('  */
+  YYSYMBOL_17_ = 17,                       /* ')'  */
+  YYSYMBOL_YYACCEPT = 18,                  /* $accept  */
+  YYSYMBOL_program = 19,                   /* program  */
+  YYSYMBOL_statement_list = 20,            /* statement_list  */
+  YYSYMBOL_statement = 21,                 /* statement  */
+  YYSYMBOL_22_1 = 22,                      /* $@1  */
+  YYSYMBOL_declaration_list = 23,          /* declaration_list  */
+  YYSYMBOL_assignment_list = 24,           /* assignment_list  */
+  YYSYMBOL_var_decl = 25,                  /* var_decl  */
+  YYSYMBOL_assignment = 26,                /* assignment  */
+  YYSYMBOL_expr = 27,                      /* expr  */
+  YYSYMBOL_term = 28,                      /* term  */
+  YYSYMBOL_factor = 29                     /* factor  */
 };
 typedef enum yysymbol_kind_t yysymbol_kind_t;
 
@@ -553,21 +526,21 @@ union yyalloc
 #endif /* !YYCOPY_NEEDED */
 
 /* YYFINAL -- State number of the termination state.  */
-#define YYFINAL  2
+#define YYFINAL  22
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   38
+#define YYLAST   77
 
 /* YYNTOKENS -- Number of terminals.  */
-#define YYNTOKENS  15
+#define YYNTOKENS  18
 /* YYNNTS -- Number of nonterminals.  */
-#define YYNNTS  10
+#define YYNNTS  12
 /* YYNRULES -- Number of rules.  */
-#define YYNRULES  26
+#define YYNRULES  33
 /* YYNSTATES -- Number of states.  */
-#define YYNSTATES  44
+#define YYNSTATES  60
 
 /* YYMAXUTOK -- Last valid token kind.  */
-#define YYMAXUTOK   269
+#define YYMAXUTOK   266
 
 
 /* YYTRANSLATE(TOKEN-NUM) -- Symbol number corresponding to TOKEN-NUM
@@ -585,7 +558,7 @@ static const yytype_int8 yytranslate[] =
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
-       2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+      16,    17,    14,    12,     2,    13,     2,    15,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
@@ -607,16 +580,17 @@ static const yytype_int8 yytranslate[] =
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
        2,     2,     2,     2,     2,     2,     1,     2,     3,     4,
-       5,     6,     7,     8,     9,    10,    11,    12,    13,    14
+       5,     6,     7,     8,     9,    10,    11
 };
 
 #if YYDEBUG
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    50,    50,    52,    56,    62,    68,    77,    78,    82,
-      88,    95,   101,   111,   117,   124,   130,   140,   151,   170,
-     171,   172,   176,   177,   178,   190,   191
+       0,   109,   109,   113,   114,   118,   122,   133,   136,   136,
+     139,   140,   141,   145,   146,   150,   151,   155,   163,   167,
+     172,   179,   183,   188,   195,   196,   197,   201,   202,   210,
+     214,   215,   216,   217
 };
 #endif
 
@@ -632,11 +606,12 @@ static const char *yysymbol_name (yysymbol_kind_t yysymbol) YY_ATTRIBUTE_UNUSED;
    First, the terminals, then, starting at YYNTOKENS, nonterminals.  */
 static const char *const yytname[] =
 {
-  "\"end of file\"", "error", "\"invalid token\"", "NUMBER", "CHARACTER",
-  "ID", "INT", "CHAR", "ADDITION", "SUBTRACTION", "MULTIPLICATION",
-  "DIVISION", "SEMICOLON", "COMMA", "ASSIGNMENT", "$accept", "program",
-  "statement", "declaration", "int_declaration_list",
-  "char_declaration_list", "assignment", "expression", "term", "factor", YY_NULLPTR
+  "\"end of file\"", "error", "\"invalid token\"", "DATA_TYPE",
+  "VARIABLE", "ASSIGNMENT", "DISPLAY", "COMMA", "SEMI", "STRING",
+  "INTEGER", "CHARACTER", "'+'", "'-'", "'*'", "'/'", "'('", "')'",
+  "$accept", "program", "statement_list", "statement", "$@1",
+  "declaration_list", "assignment_list", "var_decl", "assignment", "expr",
+  "term", "factor", YY_NULLPTR
 };
 
 static const char *
@@ -646,12 +621,12 @@ yysymbol_name (yysymbol_kind_t yysymbol)
 }
 #endif
 
-#define YYPACT_NINF (-14)
+#define YYPACT_NINF (-9)
 
 #define yypact_value_is_default(Yyn) \
   ((Yyn) == YYPACT_NINF)
 
-#define YYTABLE_NINF (-1)
+#define YYTABLE_NINF (-24)
 
 #define yytable_value_is_error(Yyn) \
   0
@@ -660,11 +635,12 @@ yysymbol_name (yysymbol_kind_t yysymbol)
    STATE-NUM.  */
 static const yytype_int8 yypact[] =
 {
-     -14,     1,   -14,   -14,   -12,    20,    21,   -14,    -3,    16,
-       2,     9,   -14,    13,    15,    17,    18,    22,   -14,   -14,
-       0,     0,   -14,     0,     0,   -14,   -14,     4,     0,    26,
-      29,    31,     9,     9,   -14,   -14,     4,    23,   -14,    24,
-       0,    30,     4,   -14
+      14,    -3,    -9,     5,    -8,    -9,    -9,    33,    27,     3,
+      -9,    -6,    -9,    34,    44,    -9,    -9,    35,    12,    22,
+      -9,    38,    -9,    -9,    50,    -9,    -9,    33,    33,    33,
+      33,    43,    53,    -9,    -9,    55,    52,    28,    39,    40,
+      -9,     5,    -9,    44,    44,    -9,    -9,    25,    35,    -9,
+      62,    65,    66,    -9,    59,    52,    -9,    -9,    -9,    -9
 };
 
 /* YYDEFACT[STATE-NUM] -- Default reduction number in state STATE-NUM.
@@ -672,23 +648,26 @@ static const yytype_int8 yypact[] =
    means the default is an error.  */
 static const yytype_int8 yydefact[] =
 {
-       2,     0,     1,    25,    26,     0,     0,     3,     0,     0,
-       0,    19,    22,     0,     9,     7,    13,     8,     4,     5,
-       0,     0,     6,     0,     0,    18,    26,    17,     0,     0,
-       0,     0,    20,    21,    23,    24,    10,    11,    14,    15,
-       0,     0,    12,    16
+       0,     0,     8,    33,     0,    31,    32,     0,     0,     0,
+       4,     0,    15,     0,    26,    29,    12,     0,     0,     0,
+      33,     0,     1,     3,     0,    10,    11,     0,     0,     0,
+       0,    17,     0,    13,    22,    32,    21,    33,     0,     0,
+      30,     0,    16,    24,    25,    27,    28,     0,     0,     9,
+       0,     0,     0,    19,    32,    18,    14,     6,     5,     7
 };
 
 /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-     -14,   -14,   -14,   -14,   -14,   -14,   -14,   -13,     3,    -2
+      -9,    -9,    -9,    67,    -9,    -9,    -9,    29,    51,    -7,
+      41,    42
 };
 
 /* YYDEFGOTO[NTERM-NUM].  */
 static const yytype_int8 yydefgoto[] =
 {
-       0,     1,     7,     8,    15,    17,     9,    10,    11,    12
+       0,     8,     9,    10,    17,    32,    11,    33,    12,    13,
+      14,    15
 };
 
 /* YYTABLE[YYPACT[STATE-NUM]] -- What to do in state STATE-NUM.  If
@@ -696,45 +675,56 @@ static const yytype_int8 yydefgoto[] =
    number is the opposite.  If YYTABLE_NINF, syntax error.  */
 static const yytype_int8 yytable[] =
 {
-      27,     2,    13,     3,     3,    26,     4,     5,     6,    18,
-      20,    21,    20,    21,    22,    36,     3,    25,    26,    23,
-      24,    34,    35,    32,    33,    14,    16,    42,    19,    28,
-      29,    37,    30,    38,    43,    31,    39,    40,    41
+      21,    24,    25,    -2,     1,    16,     2,     3,    19,     4,
+      18,    36,    39,     5,     6,     1,    20,     2,     3,     7,
+       4,    34,     5,    35,     5,     6,    37,    22,     7,    20,
+       7,    38,     5,     6,    53,     5,    54,    20,     7,    31,
+      55,     7,    26,     5,     6,    50,    27,    28,    47,     7,
+      27,    28,    27,    28,    41,    40,    51,    52,    29,    30,
+      48,    49,   -23,   -23,    27,    28,   -20,   -20,    43,    44,
+      57,    45,    46,    58,    59,    42,    23,    56
 };
 
 static const yytype_int8 yycheck[] =
 {
-      13,     0,    14,     3,     3,     5,     5,     6,     7,    12,
-       8,     9,     8,     9,    12,    28,     3,     4,     5,    10,
-      11,    23,    24,    20,    21,     5,     5,    40,    12,    14,
-      13,     5,    14,     4,     4,    13,     5,    14,    14
+       7,     7,     8,     0,     1,     8,     3,     4,    16,     6,
+       5,    18,    19,    10,    11,     1,     4,     3,     4,    16,
+       6,     9,    10,    11,    10,    11,     4,     0,    16,     4,
+      16,     9,    10,    11,     9,    10,    11,     4,    16,     4,
+      47,    16,     8,    10,    11,    17,    12,    13,     5,    16,
+      12,    13,    12,    13,     4,    17,    17,    17,    14,    15,
+       7,     8,     7,     8,    12,    13,     7,     8,    27,    28,
+       8,    29,    30,     8,     8,    24,     9,    48
 };
 
 /* YYSTOS[STATE-NUM] -- The symbol kind of the accessing symbol of
    state STATE-NUM.  */
 static const yytype_int8 yystos[] =
 {
-       0,    16,     0,     3,     5,     6,     7,    17,    18,    21,
-      22,    23,    24,    14,     5,    19,     5,    20,    12,    12,
-       8,     9,    12,    10,    11,     4,     5,    22,    14,    13,
-      14,    13,    23,    23,    24,    24,    22,     5,     4,     5,
-      14,    14,    22,     4
+       0,     1,     3,     4,     6,    10,    11,    16,    19,    20,
+      21,    24,    26,    27,    28,    29,     8,    22,     5,    16,
+       4,    27,     0,    21,     7,     8,     8,    12,    13,    14,
+      15,     4,    23,    25,     9,    11,    27,     4,     9,    27,
+      17,     4,    26,    28,    28,    29,    29,     5,     7,     8,
+      17,    17,    17,     9,    11,    27,    25,     8,     8,     8
 };
 
 /* YYR1[RULE-NUM] -- Symbol kind of the left-hand side of rule RULE-NUM.  */
 static const yytype_int8 yyr1[] =
 {
-       0,    15,    16,    16,    17,    17,    17,    18,    18,    19,
-      19,    19,    19,    20,    20,    20,    20,    21,    21,    22,
-      22,    22,    23,    23,    23,    24,    24
+       0,    18,    19,    20,    20,    21,    21,    21,    22,    21,
+      21,    21,    21,    23,    23,    24,    24,    25,    25,    25,
+      25,    26,    26,    26,    27,    27,    27,    28,    28,    28,
+      29,    29,    29,    29
 };
 
 /* YYR2[RULE-NUM] -- Number of symbols on the right-hand side of rule RULE-NUM.  */
 static const yytype_int8 yyr2[] =
 {
-       0,     2,     0,     2,     2,     2,     2,     2,     2,     1,
-       3,     3,     5,     1,     3,     3,     5,     3,     3,     1,
-       3,     3,     1,     3,     3,     1,     1
+       0,     2,     1,     2,     1,     5,     5,     5,     0,     4,
+       2,     2,     2,     1,     3,     1,     3,     1,     3,     3,
+       3,     3,     3,     3,     3,     3,     1,     3,     3,     1,
+       3,     1,     1,     1
 };
 
 
@@ -1197,240 +1187,200 @@ yyreduce:
   YY_REDUCE_PRINT (yyn);
   switch (yyn)
     {
-  case 4: /* statement: declaration SEMICOLON  */
-#line 56 "parser.y"
+  case 5: /* statement: DISPLAY '(' STRING ')' SEMI  */
+#line 118 "parser.y"
                                 { 
-                                    if (!has_error) {
-                                        printf("Declaration processed\n"); 
-                                    }
-                                    has_error = 0;
-                                }
-#line 1209 "y.tab.c"
+        printf("LINE %d: %s\n",yylineno , (yyvsp[-2].str)); 
+        free((yyvsp[-2].str)); 
+    }
+#line 1197 "parser.tab.c"
     break;
 
-  case 5: /* statement: assignment SEMICOLON  */
-#line 62 "parser.y"
-                                { 
-                                    if (!has_error) {
-                                        printf("Assignment processed\n"); 
-                                    }
-                                    has_error = 0;
-                                }
-#line 1220 "y.tab.c"
+  case 6: /* statement: DISPLAY '(' VARIABLE ')' SEMI  */
+#line 122 "parser.y"
+                                   {
+        vars *var = getVariable((yyvsp[-2].str));
+        if (var) {
+            if (var->data_type == 's') {
+                printf("LINE %d: %s\n", yylineno, var->data.str_val);
+            } else {
+                printf("LINE %d: %d\n",yylineno , var->data.val);
+            }
+        }
+        free((yyvsp[-2].str));
+    }
+#line 1213 "parser.tab.c"
     break;
 
-  case 6: /* statement: expression SEMICOLON  */
-#line 68 "parser.y"
-                                { 
-                                    if (!has_error) {
-                                        printf("Expression result: %d\n", (yyvsp[-1].num)); 
-                                    }
-                                    has_error = 0;
-                                }
-#line 1231 "y.tab.c"
+  case 7: /* statement: DISPLAY '(' expr ')' SEMI  */
+#line 133 "parser.y"
+                              { 
+        printf("LINE %d: %d\n", yylineno, (yyvsp[-2].num));
+    }
+#line 1221 "parser.tab.c"
     break;
 
-  case 9: /* int_declaration_list: ID  */
-#line 82 "parser.y"
-                                { 
-                                    if (add_symbol((yyvsp[0].str), 'i')) {
-                                        printf("Declared variable: %s\n", (yyvsp[0].str));
-                                    }
-                                    free((yyvsp[0].str));
-                                }
-#line 1242 "y.tab.c"
+  case 8: /* $@1: %empty  */
+#line 136 "parser.y"
+              {currentDataType = (yyvsp[0].str); }
+#line 1227 "parser.tab.c"
     break;
 
-  case 10: /* int_declaration_list: ID ASSIGNMENT expression  */
-#line 88 "parser.y"
-                                { 
-                                    if (add_symbol((yyvsp[-2].str), 'i')) {
-                                        set_symbol_value((yyvsp[-2].str), (yyvsp[0].num));
-                                        printf("Declared and initialized %s = %d\n", (yyvsp[-2].str), (yyvsp[0].num));
-                                    }
-                                    free((yyvsp[-2].str));
-                                }
-#line 1254 "y.tab.c"
+  case 9: /* statement: DATA_TYPE $@1 declaration_list SEMI  */
+#line 136 "parser.y"
+                                                             {
+        currentDataType = NULL;
+    }
+#line 1235 "parser.tab.c"
     break;
 
-  case 11: /* int_declaration_list: int_declaration_list COMMA ID  */
-#line 95 "parser.y"
-                                    { 
-                                    if (add_symbol((yyvsp[0].str), 'i')) {
-                                        printf("Declared variable: %s\n", (yyvsp[0].str));
-                                    }
-                                    free((yyvsp[0].str));
-                                }
-#line 1265 "y.tab.c"
+  case 12: /* statement: error SEMI  */
+#line 141 "parser.y"
+               {yyerrok; }
+#line 1241 "parser.tab.c"
     break;
 
-  case 12: /* int_declaration_list: int_declaration_list COMMA ID ASSIGNMENT expression  */
-#line 101 "parser.y"
-                                                          {
-                                    if (add_symbol((yyvsp[-2].str), 'i')) {
-                                        set_symbol_value((yyvsp[-2].str), (yyvsp[0].num));
-                                        printf("Declared and initialized %s = %d\n", (yyvsp[-2].str), (yyvsp[0].num));
-                                    }
-                                    free((yyvsp[-2].str));
-                                }
-#line 1277 "y.tab.c"
+  case 17: /* var_decl: VARIABLE  */
+#line 155 "parser.y"
+             {
+        if(strcmp(currentDataType, "string")==0){
+            createVariable(currentDataType, (yyvsp[0].str), 0, "");
+        }else{
+            createVariable(currentDataType, (yyvsp[0].str), 0, NULL);
+        }
+        free((yyvsp[0].str));
+    }
+#line 1254 "parser.tab.c"
     break;
 
-  case 13: /* char_declaration_list: ID  */
-#line 111 "parser.y"
-                                { 
-                                    if (add_symbol((yyvsp[0].str), 'c')) {
-                                        printf("Declared char variable: %s\n", (yyvsp[0].str));
-                                    }
-                                    free((yyvsp[0].str));
-                                }
-#line 1288 "y.tab.c"
+  case 18: /* var_decl: VARIABLE ASSIGNMENT expr  */
+#line 163 "parser.y"
+                             {
+        createVariable(currentDataType, (yyvsp[-2].str), (yyvsp[0].num), NULL);
+        free((yyvsp[-2].str));
+    }
+#line 1263 "parser.tab.c"
     break;
 
-  case 14: /* char_declaration_list: ID ASSIGNMENT CHARACTER  */
-#line 117 "parser.y"
-                                { 
-                                    if (add_symbol((yyvsp[-2].str), 'c')) {
-                                        symbol_table[symbol_count-1].value.char_val = (yyvsp[0].c);
-                                        printf("Declared and initialized %s = '%c'\n", (yyvsp[-2].str), (yyvsp[0].c));
-                                    }
-                                    free((yyvsp[-2].str));
-                                }
-#line 1300 "y.tab.c"
+  case 19: /* var_decl: VARIABLE ASSIGNMENT STRING  */
+#line 167 "parser.y"
+                              {
+        createVariable(currentDataType, (yyvsp[-2].str), 0, (yyvsp[0].str));
+        free((yyvsp[-2].str));
+        free((yyvsp[0].str));
+    }
+#line 1273 "parser.tab.c"
     break;
 
-  case 15: /* char_declaration_list: char_declaration_list COMMA ID  */
-#line 124 "parser.y"
-                                     { 
-                                    if (add_symbol((yyvsp[0].str), 'c')) {
-                                        printf("Declared char variable: %s\n", (yyvsp[0].str));
-                                    }
-                                    free((yyvsp[0].str));
-                                }
-#line 1311 "y.tab.c"
-    break;
-
-  case 16: /* char_declaration_list: char_declaration_list COMMA ID ASSIGNMENT CHARACTER  */
-#line 130 "parser.y"
-                                                          {
-                                    if (add_symbol((yyvsp[-2].str), 'c')) {
-                                        symbol_table[symbol_count-1].value.char_val = (yyvsp[0].c);
-                                        printf("Declared and initialized %s = '%c'\n", (yyvsp[-2].str), (yyvsp[0].c));
-                                    }
-                                    free((yyvsp[-2].str));
-                                }
-#line 1323 "y.tab.c"
-    break;
-
-  case 17: /* assignment: ID ASSIGNMENT expression  */
-#line 140 "parser.y"
-                                { 
-                                    int idx = lookup_symbol((yyvsp[-2].str));
-                                    if (idx >= 0) {
-                                        set_symbol_value((yyvsp[-2].str), (yyvsp[0].num));
-                                        printf("Assigned %s = %d\n", (yyvsp[-2].str), (yyvsp[0].num));
-                                    } else {
-                                        fprintf(stderr, "Error: Undeclared variable '%s'\n", (yyvsp[-2].str));
-                                        has_error = 1;
-                                    }
-                                    free((yyvsp[-2].str));
-                                }
-#line 1339 "y.tab.c"
-    break;
-
-  case 18: /* assignment: ID ASSIGNMENT CHARACTER  */
-#line 151 "parser.y"
-                                { 
-                                    int idx = lookup_symbol((yyvsp[-2].str));
-                                    if (idx >= 0) {
-                                        if (symbol_table[idx].type == 'c') {
-                                            symbol_table[idx].value.char_val = (yyvsp[0].c);
-                                            printf("Assigned %s = '%c'\n", (yyvsp[-2].str), (yyvsp[0].c));
-                                        } else {
-                                            fprintf(stderr, "Error: Type mismatch for '%s'\n", (yyvsp[-2].str));
-                                            has_error = 1;
-                                        }
-                                    } else {
-                                        fprintf(stderr, "Error: Undeclared variable '%s'\n", (yyvsp[-2].str));
-                                        has_error = 1;
-                                    }
-                                    free((yyvsp[-2].str));
-                                }
-#line 1360 "y.tab.c"
-    break;
-
-  case 19: /* expression: term  */
-#line 170 "parser.y"
-                                { (yyval.num) = (yyvsp[0].num); }
-#line 1366 "y.tab.c"
-    break;
-
-  case 20: /* expression: expression ADDITION term  */
-#line 171 "parser.y"
-                                { (yyval.num) = (yyvsp[-2].num) + (yyvsp[0].num); }
-#line 1372 "y.tab.c"
-    break;
-
-  case 21: /* expression: expression SUBTRACTION term  */
+  case 20: /* var_decl: VARIABLE ASSIGNMENT CHARACTER  */
 #line 172 "parser.y"
-                                  { (yyval.num) = (yyvsp[-2].num) - (yyvsp[0].num); }
-#line 1378 "y.tab.c"
+                                  { 
+        createVariable(currentDataType, (yyvsp[-2].str), (int)(yyvsp[0].character), NULL);
+        free((yyvsp[-2].str));
+    }
+#line 1282 "parser.tab.c"
     break;
 
-  case 22: /* term: factor  */
-#line 176 "parser.y"
-                                { (yyval.num) = (yyvsp[0].num); }
-#line 1384 "y.tab.c"
+  case 21: /* assignment: VARIABLE ASSIGNMENT expr  */
+#line 179 "parser.y"
+                             {
+        variableReAssignment((yyvsp[-2].str), (yyvsp[0].num), NULL);
+        free((yyvsp[-2].str));
+    }
+#line 1291 "parser.tab.c"
     break;
 
-  case 23: /* term: term MULTIPLICATION factor  */
-#line 177 "parser.y"
-                                 { (yyval.num) = (yyvsp[-2].num) * (yyvsp[0].num); }
-#line 1390 "y.tab.c"
+  case 22: /* assignment: VARIABLE ASSIGNMENT STRING  */
+#line 183 "parser.y"
+                               {
+        variableReAssignment((yyvsp[-2].str), 0, (yyvsp[0].str));
+        free((yyvsp[-2].str));
+        free((yyvsp[0].str));
+    }
+#line 1301 "parser.tab.c"
     break;
 
-  case 24: /* term: term DIVISION factor  */
-#line 178 "parser.y"
-                                { 
-                                    if ((yyvsp[0].num) == 0) {
-                                        yyerror("Division by zero");
-                                        has_error = 1;
-                                        (yyval.num) = 0;
-                                    } else {
-                                        (yyval.num) = (yyvsp[-2].num) / (yyvsp[0].num);
-                                    }
-                                }
-#line 1404 "y.tab.c"
+  case 23: /* assignment: VARIABLE ASSIGNMENT CHARACTER  */
+#line 188 "parser.y"
+                                  {
+        variableReAssignment((yyvsp[-2].str), (int)(yyvsp[0].character), NULL);
+        free((yyvsp[-2].str));
+    }
+#line 1310 "parser.tab.c"
     break;
 
-  case 25: /* factor: NUMBER  */
-#line 190 "parser.y"
-                                { (yyval.num) = (yyvsp[0].num); }
-#line 1410 "y.tab.c"
+  case 24: /* expr: expr '+' term  */
+#line 195 "parser.y"
+                    {(yyval.num) = (yyvsp[-2].num) + (yyvsp[0].num);}
+#line 1316 "parser.tab.c"
     break;
 
-  case 26: /* factor: ID  */
-#line 191 "parser.y"
-                                { 
-                                    int idx = lookup_symbol((yyvsp[0].str));
-                                    if (idx >= 0) {
-                                        if (symbol_table[idx].type == 'i') {
-                                            (yyval.num) = symbol_table[idx].value.int_val;
-                                        } else {
-                                            (yyval.num) = (int)symbol_table[idx].value.char_val;
-                                        }
-                                    } else {
-                                        fprintf(stderr, "Error: Undeclared variable '%s'\n", (yyvsp[0].str));
-                                        has_error = 1;
-                                        (yyval.num) = 0;
-                                    }
-                                    free((yyvsp[0].str));
-                                }
-#line 1430 "y.tab.c"
+  case 25: /* expr: expr '-' term  */
+#line 196 "parser.y"
+                    {(yyval.num) = (yyvsp[-2].num) - (yyvsp[0].num);}
+#line 1322 "parser.tab.c"
+    break;
+
+  case 26: /* expr: term  */
+#line 197 "parser.y"
+                    {(yyval.num) = (yyvsp[0].num);}
+#line 1328 "parser.tab.c"
+    break;
+
+  case 27: /* term: term '*' factor  */
+#line 201 "parser.y"
+                    {(yyval.num) = (yyvsp[-2].num) * (yyvsp[0].num);}
+#line 1334 "parser.tab.c"
+    break;
+
+  case 28: /* term: term '/' factor  */
+#line 202 "parser.y"
+                    {
+        if((yyvsp[0].num) == 0){
+            yyerror("Division by zero, on line %d.", yylineno);
+            (yyval.num) = 0;
+        }else{
+            (yyval.num) = (yyvsp[-2].num) / (yyvsp[0].num);
+        }
+    }
+#line 1347 "parser.tab.c"
+    break;
+
+  case 29: /* term: factor  */
+#line 210 "parser.y"
+           {(yyval.num) = (yyvsp[0].num);}
+#line 1353 "parser.tab.c"
+    break;
+
+  case 30: /* factor: '(' expr ')'  */
+#line 214 "parser.y"
+                    {(yyval.num) = (yyvsp[-1].num);}
+#line 1359 "parser.tab.c"
+    break;
+
+  case 31: /* factor: INTEGER  */
+#line 215 "parser.y"
+                    {(yyval.num) = (yyvsp[0].num);}
+#line 1365 "parser.tab.c"
+    break;
+
+  case 32: /* factor: CHARACTER  */
+#line 216 "parser.y"
+                    {(yyval.num) = (int)(yyvsp[0].character);}
+#line 1371 "parser.tab.c"
+    break;
+
+  case 33: /* factor: VARIABLE  */
+#line 217 "parser.y"
+                    {
+            (yyval.num) = getVariableValue((yyvsp[0].str)); 
+            free((yyvsp[0].str));
+        }
+#line 1380 "parser.tab.c"
     break;
 
 
-#line 1434 "y.tab.c"
+#line 1384 "parser.tab.c"
 
       default: break;
     }
@@ -1623,56 +1573,271 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 208 "parser.y"
+#line 223 "parser.y"
 
 
-void yyerror(const char *s) {
-    fprintf(stderr, "Error: %s\n", s);
-}
-
-int lookup_symbol(char *name) {
-    for (int i = 0; i < symbol_count; i++) {
-        if (strcmp(symbol_table[i].name, name) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-int add_symbol(char *name, char type) {
-    if (lookup_symbol(name) >= 0) {
-        fprintf(stderr, "Error: Variable '%s' is already declared\n", name);
-        has_error = 1;
-        return 0;  /* Return failure */
-    }
-    if (symbol_count < 100) {
-        symbol_table[symbol_count].name = strdup(name);
-        symbol_table[symbol_count].type = type;
-        symbol_table[symbol_count].value.int_val = 0;
-        symbol_count++;
-        return 1;  /* Return success */
-    }
-    fprintf(stderr, "Error: Symbol table full\n");
-    has_error = 1;
-    return 0;
-}
-
-void set_symbol_value(char *name, int value) {
-    int idx = lookup_symbol(name);
-    if (idx >= 0) {
-        symbol_table[idx].value.int_val = value;
-    }
-}
-
-int get_symbol_value(char *name) {
-    int idx = lookup_symbol(name);
-    if (idx >= 0) {
-        return symbol_table[idx].value.int_val;
-    }
-    return 0;
-}
 
 int main(void) {
-    printf("Enter your code (Ctrl+D to end):\n");
-    return yyparse();
+    printf("Welcome to my Custom Zypher!\n");
+    int result = yyparse();
+    if (headVars) printVariableTable();
+    if (headErrList) printErrorTable();
+    if (headErrList) cleanupErrorTable();
+    if (headVars) cleanupVariableTable();
+    return result;
+}
+
+
+/*---------------------------------Error handling---------------------------------------------------*/
+void yyerror(const char *fmt, ...) {
+    // Filter out Bison's default "syntax error"
+    if (fmt && strcmp(fmt, "syntax error") == 0)
+        return;
+
+    va_list args;
+    va_start(args, fmt);
+
+    char buffer[512];
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    errorList *currentError = calloc(1, sizeof(errorList));
+    if(!currentError){
+        fprintf(stderr, "Memory allocation failed for error node. Parser at fault.\n");
+        return;
+    }
+
+    currentError->line_error = yylineno;
+    currentError->error_type = strdup(buffer);
+    if(!currentError->error_type){
+        fprintf(stderr, "Memory allocation failed for error message. Parser at fault.\n");
+        free(currentError);
+        return;
+    }
+    currentError->next = NULL;
+
+    if(!headErrList){
+        headErrList = tailErrList = currentError;
+    }else{
+        tailErrList->next = currentError;
+        tailErrList = currentError; 
+    }
+
+    
+}
+
+void printErrorTable() {
+    errorList *curr = headErrList;
+    printf("=========== Error Table ============\n");
+    while (curr) {
+        printf("Line %d: %s", curr->line_error, curr->error_type);
+        if (strlen(curr->error_type) == 0 || curr->error_type[strlen(curr->error_type) - 1] != '\n')
+            printf("\n");
+        curr = curr->next;
+    }
+    printf("===================================\n");
+}
+
+
+
+void cleanupErrorTable(){
+    while (headErrList) {
+        errorList *tmp = headErrList;
+        headErrList = headErrList->next;
+        free(tmp->error_type);
+        free(tmp);
+    }
+    headErrList = tailErrList = NULL;
+}
+
+
+/*--------------- Variable handling ----------------------------*/
+//Free all memory for variable table
+
+int getVariableValue(char *variableName){
+    if (isRecovering) return 0;
+
+    vars *existing = getVariable(variableName);
+
+    if(!existing){
+        yyerror("Undefined variable %s, on line %d.", variableName, yylineno);
+        return 0;
+    }
+
+    if(existing->data_type == 's'){
+        yyerror("Cannot perform arithmetic operations on variable %s: string literals, on line %d.", variableName, yylineno);
+        return 0;
+    }
+
+    return existing->data.val;
+
+}
+
+void cleanupVariableTable() {
+    vars *current = headVars;
+    vars *next;
+
+    while (current) {
+        next = current->next;
+        if (current->data_type == 's' && current->data.str_val) free(current->data.str_val);
+        free(current->id);
+        free(current);
+        current = next;
+    }
+    headVars = tailVars = NULL;
+}
+
+// get the type name for error handling in variable
+const char* typeName(char dt) {
+    return (dt=='i')?"int":(dt=='c')?"char":"string";
+}
+
+
+// Returns the pointer to the variable if found, NULL otherwise
+vars* getVariable(char* variable) {
+    vars *current = headVars;
+    while (current) {
+        if (strcmp(current->id, variable) == 0) {
+            return current; // found
+        }
+        current = current->next;
+    }
+    return NULL; // not found
+}
+
+// Check and Create Variable
+void createVariable(char *DTYPE, char* variable, int val, char *str_val) {  
+    // For declaration and assignment
+    vars *existing = getVariable(variable);
+
+    if(isdigit(variable[0])){
+        yyerror("Variable %s can't start in number, in line %d.", variable, yylineno);
+        return;
+    }
+
+    // Declaration with type keyword
+    if (existing && DTYPE && strlen(DTYPE) > 0) {
+        yyerror("Variable '%s' is already declared with type '%s' on line %d", 
+                variable, typeName(existing->data_type), yylineno);
+        return;
+    }
+
+    // Assignment without type keyword
+    if (!existing && (!DTYPE || strlen(DTYPE) == 0)) {
+        yyerror("Undefined variable '%s' on line %d", variable, yylineno);
+        return;
+    }
+
+    // Type/value mismatch check
+    if (DTYPE && strcmp(DTYPE, "int") == 0 && str_val != NULL) {
+        yyerror("Cannot assign string value to int variable '%s' on line %d", variable, yylineno);
+        return;
+    }
+    if (DTYPE && strcmp(DTYPE, "char") == 0 && str_val != NULL) {
+        yyerror("Cannot assign string value to char variable '%s' on line %d", variable, yylineno);
+        return;
+    }
+    if (DTYPE && strcmp(DTYPE, "string") == 0 && str_val == NULL) {
+        yyerror("Cannot assign non-string value to string variable '%s' on line %d", variable, yylineno);
+        return;
+    }
+
+
+    // no further error then proceed to create the variable
+    vars *newVar = calloc(1, sizeof(vars));
+    if (!newVar) {
+        printf("Failed to allocate memory for variable '%s'\n", variable);
+        return;
+    }
+
+    if (strcmp("int", DTYPE) == 0) {
+        newVar->data_type = 'i';
+        newVar->data.val = val;
+    } else if (strcmp("char", DTYPE) == 0) {
+        // NOTE: char stored as int (ASCII value)
+        newVar->data_type = 'c';
+        newVar->data.val = val;
+    } else if (strcmp("string", DTYPE) == 0) {
+        newVar->data_type = 's';
+        newVar->data.str_val = str_val ? strdup(str_val) : strdup("");
+    }
+    else {
+        yyerror("Invalid data type '%s' for variable '%s'", DTYPE, variable);
+        free(newVar);
+        return;
+    }
+
+    newVar->id = strdup(variable);
+    if (!newVar->id) {
+        fprintf(stderr, "Failed to allocate memory for variable ID '%s'\n", variable);
+        if (newVar->data_type == 's' && newVar->data.str_val)
+            free(newVar->data.str_val);
+        free(newVar);
+        return;
+    }
+
+
+    newVar->next = NULL;
+
+    if (!headVars) {
+        headVars = tailVars = newVar;
+    } else {
+        tailVars->next = newVar;
+        tailVars = newVar;
+    }
+
+    printf("Variable '%s' successfully created on line %d.\n", variable, yylineno);
+}
+//NOTE: createVariable both declaration and assignment, require a data type
+//NOTE: variableAssignment only re-assignment that doesn't require data type
+
+void variableReAssignment(char* variable, int val, char *str_val){
+    vars *existing = getVariable(variable);
+
+    if(!existing){
+        yyerror("Undefined variable %s on line %d.", variable, yylineno);
+        return;
+    }
+
+    if (existing->data_type == 'i' && str_val != NULL) {
+        yyerror("Cannot assign string value to int variable '%s' on line %d", variable, yylineno);
+        return;
+    }
+    if (existing->data_type == 'c' && str_val != NULL) {
+        yyerror("Cannot assign string value to char variable '%s' on line %d", variable, yylineno);
+        return;
+    }
+    if (existing->data_type == 's' && str_val == NULL) {
+        yyerror("Cannot assign non-string value to string variable '%s' on line %d", variable, yylineno);
+        return;
+    }
+
+    //Assign value IDK
+    if(existing->data_type == 'i' || existing->data_type == 'c'){
+        existing->data.val = val;
+    }else{
+        free(existing->data.str_val);
+        existing->data.str_val = strdup(str_val ? str_val : "");
+        if(!existing->data.str_val){
+            yyerror("Failed to allocate memory for str value on line %d", yylineno);
+            return;
+        }
+    }
+    printf("Variable '%s' updated successfully on line %d.\n", variable, yylineno);
+
+}
+
+
+void printVariableTable() {
+    printf("\n=== Variable Table ===\n");
+    vars *curr = headVars;
+    while (curr) {
+        printf("Variable: %s, Type: %s", curr->id, typeName(curr->data_type));
+        if (curr->data_type == 's') {
+            printf(", Value: \"%s\"\n", curr->data.str_val);
+        } else {
+            printf(", Value: %d\n", curr->data.val);
+        }
+        curr = curr->next;
+    }
+    printf("======================\n\n");
 }
