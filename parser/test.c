@@ -3,6 +3,7 @@
 #include <string.h>
 #include <regex.h>
 #include <ctype.h>
+#include <stdint.h>
 
 // Data type constants
 #define TYPE_INT 1
@@ -78,6 +79,9 @@ int is_declaration(const char *line);
 int is_variable_name(const char *str);
 void process_declaration(const char *declaration, int line_num);
 void process_assignment(const char *assignment, int line_num);
+int get_register_number(char *reg);
+void convert_mips64_to_binhex(char *filename);
+
 
 // Find a variable in the symbol table
 vars* find_variable(const char *id) {
@@ -608,19 +612,18 @@ void generate_mips64() {
                     // Use the initial value stored in history
                     fprintf(output_file, "%s: .word %d\n", v->id, cur_hist->value);
                 } else {
-                    fprintf(output_file, "%s: .space 8   # uninitialized int (r%d)\n", v->id, v->reg_num);
+                    fprintf(output_file, "%s: .space 8\n", v->id);
                 }
             } else { // TYPE_CHAR
                 if (cur_hist->has_value) {
                     fprintf(output_file, "%s: .byte %d\n", v->id, cur_hist->value & 0xFF);
                 } else {
-                    fprintf(output_file, "%s: .space 1   # uninitialized char (r%d)\n", v->id, v->reg_num);
+                    fprintf(output_file, "%s: .space 1\n", v->id);
                 }
             }
         }
         cur_hist = cur_hist->next;
     }
-
 
     fprintf(output_file, "\n.text\n");
     fprintf(output_file, ".globl main\n");
@@ -629,10 +632,6 @@ void generate_mips64() {
     // --- TEXT SECTION: use history to emit operations in order ---
     history *current = history_head;
     while (current) {
-        fprintf(output_file, "    # Line %d: %s\n",
-                current->line_num,
-                current->original_line ? current->original_line : "");
-
         vars *dst = find_variable(current->variable_name);
         if (!dst) {
             fprintf(output_file, "    # ERROR: Variable '%s' not found in symbol table\n\n",
@@ -643,39 +642,69 @@ void generate_mips64() {
 
         if (current->operation_type == OP_DECLARATION) {
             if (current->has_value) {
-                // initialize register assigned to variable
-                fprintf(output_file, "    daddiu r%d, r0, %d    # %s %s = %d\n",
-                        dst->reg_num,
-                        current->value,
-                        dst->data_type == TYPE_INT ? "int" : "char",
-                        current->variable_name,
-                        current->value);
+                // Load initial value into register, then store to memory
+                fprintf(output_file, "    # Declaration: %s = %d\n", dst->id, current->value);
+                fprintf(output_file, "    daddiu r%d, r0, %d      # Load value into register\n",
+                        dst->reg_num, current->value);
+                fprintf(output_file, "    dla r8, %s              # Load address of %s\n",
+                        dst->id, dst->id);
+                
+                if (dst->data_type == TYPE_INT) {
+                    fprintf(output_file, "    sd r%d, 0(r8)           # Store to memory\n",
+                            dst->reg_num);
+                } else { // TYPE_CHAR
+                    fprintf(output_file, "    sb r%d, 0(r8)           # Store byte to memory\n",
+                            dst->reg_num);
+                }
             } else {
-                fprintf(output_file, "    # %s %s declared (uninitialized) -> r%d\n",
-                        dst->data_type == TYPE_INT ? "int" : "char",
-                        current->variable_name,
-                        dst->reg_num);
+                fprintf(output_file, "    # Declaration: %s (uninitialized)\n", dst->id);
             }
         } else if (current->operation_type == OP_ASSIGNMENT) {
             if (current->source_variable) {
+                // Variable-to-variable assignment: load from source, store to destination
                 vars *src = find_variable(current->source_variable);
                 if (src) {
-                    fprintf(output_file, "    daddu r%d, r0, r%d    # %s = %s\n",
-                            dst->reg_num,
-                            src->reg_num,
-                            current->variable_name,
-                            current->source_variable);
+                    fprintf(output_file, "    # Assignment: %s = %s\n", dst->id, src->id);
+                    fprintf(output_file, "    dla r8, %s              # Load address of %s\n",
+                            src->id, src->id);
+                    
+                    if (src->data_type == TYPE_INT) {
+                        fprintf(output_file, "    ld r%d, 0(r8)           # Load value from memory\n",
+                                dst->reg_num);
+                    } else { // TYPE_CHAR
+                        fprintf(output_file, "    lb r%d, 0(r8)           # Load byte from memory\n",
+                                dst->reg_num);
+                    }
+                    
+                    fprintf(output_file, "    dla r8, %s              # Load address of %s\n",
+                            dst->id, dst->id);
+                    
+                    if (dst->data_type == TYPE_INT) {
+                        fprintf(output_file, "    sd r%d, 0(r8)           # Store to memory\n",
+                                dst->reg_num);
+                    } else { // TYPE_CHAR
+                        fprintf(output_file, "    sb r%d, 0(r8)           # Store byte to memory\n",
+                                dst->reg_num);
+                    }
                 } else {
                     fprintf(output_file, "    # ERROR: Source variable '%s' not found\n",
                             current->source_variable);
                 }
             } else {
-                // immediate assignment
-                fprintf(output_file, "    daddiu r%d, r0, %d    # %s = %d\n",
-                        dst->reg_num,
-                        current->value,
-                        current->variable_name,
-                        current->value);
+                // Immediate value assignment
+                fprintf(output_file, "    # Assignment: %s = %d\n", dst->id, current->value);
+                fprintf(output_file, "    daddiu r%d, r0, %d      # Load immediate value\n",
+                        dst->reg_num, current->value);
+                fprintf(output_file, "    dla r8, %s              # Load address of %s\n",
+                        dst->id, dst->id);
+                
+                if (dst->data_type == TYPE_INT) {
+                    fprintf(output_file, "    sd r%d, 0(r8)           # Store to memory\n",
+                            dst->reg_num);
+                } else { // TYPE_CHAR
+                    fprintf(output_file, "    sb r%d, 0(r8)           # Store byte to memory\n",
+                            dst->reg_num);
+                }
             }
         }
 
@@ -684,12 +713,11 @@ void generate_mips64() {
     }
 
     // --- Exit: put syscall number into r31 then syscall ---
-    fprintf(output_file, "    # Program exit\n");
-    fprintf(output_file, "    daddiu r31, r0, 10     # syscall code 10 (exit) -> r31\n");
-    fprintf(output_file, "    syscall                # exit program\n\n");
+    fprintf(output_file, "    daddiu r31, r0, 10      # Exit syscall\n");
+    fprintf(output_file, "    syscall\n");
 
     fclose(output_file);
-    printf("\n=== MIPS64 Code Generated Successfully (with .data) ===\n");
+    printf("\n=== MIPS64 Code Generated Successfully (with memory operations) ===\n");
 }
 
 // Free symbol table memory
@@ -748,6 +776,122 @@ void free_history() {
     }
     history_head = NULL;
     history_tail = NULL;
+}
+
+
+int get_register_number(char *reg) {
+    if (reg[0] == 'r' || reg[0] == 'R') return atoi(reg + 1);
+    return -1;
+}
+
+void convert_mips64_to_binhex(char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        printf("Error: Cannot open %s\n", filename);
+        return;
+    }
+
+    char line[256];
+    int instr_count = 1;
+    uint32_t instructions[1024]; // Store all instructions
+    int total_instrs = 0;
+
+    printf("+----+------------------------+---------------------------------+----------+\n");
+    printf("| No | Instruction            | 32-bit Binary                   | Hex      |\n");
+    printf("+----+------------------------+---------------------------------+----------+\n");
+
+    while (fgets(line, sizeof(line), file)) {
+        line[strcspn(line, "\n")] = 0;
+
+        // Skip empty lines, comments, directives, labels
+        if (line[0] == '\0' || line[0] == '#' || line[0] == '.' || 
+            (strlen(line) > 0 && line[strlen(line)-1] == ':'))
+            continue;
+
+        // Trim leading whitespace
+        char *trimmed = line;
+        while (*trimmed == ' ' || *trimmed == '\t') trimmed++;
+        if (*trimmed == '\0') continue;
+        
+        // Skip lines containing .word or other data declarations
+        if (strstr(trimmed, ".word") != NULL || strstr(trimmed, ":") != NULL) {
+            continue;
+        }
+
+        char instr[16], rd[8], rs[8], rt[8];
+        int imm;
+        uint32_t binary = 0;
+        char bin_str[36];
+
+        // daddiu rD, rS, IMM
+        if (sscanf(trimmed, " %15s %7[^,], %7[^,], %d", instr, rd, rs, &imm) == 4) {
+            // Remove any whitespace from register names
+            char *rd_clean = rd;
+            while (*rd_clean == ' ') rd_clean++;
+            char *rs_clean = rs;
+            while (*rs_clean == ' ') rs_clean++;
+            
+            int rd_num = get_register_number(rd_clean);
+            int rs_num = get_register_number(rs_clean);
+            
+            if (strcmp(instr, "daddiu") == 0) {
+                int opcode = 0x19; // daddiu opcode (25 decimal)
+                binary = (opcode << 26) | (rs_num << 21) | (rd_num << 16) | (imm & 0xFFFF);
+            }
+        }
+        // syscall
+        else if (strstr(trimmed, "syscall") != NULL) {
+            binary = 0x0000000C; // syscall
+        }
+        else {
+            printf("| %-2d | %-22s | %-31s | %-8s |\n",
+                   instr_count,
+                   trimmed,
+                   "UNKNOWN",
+                   "UNKNOWN");
+            instr_count++;
+            continue;
+        }
+
+        // Convert to binary string with spaces every 8 bits
+        int bin_idx = 0;
+        for (int i = 31; i >= 0; i--) {
+            bin_str[bin_idx++] = (binary & (1 << i)) ? '1' : '0';
+            if (i % 8 == 0 && i != 0) {
+                bin_str[bin_idx++] = ' ';
+            }
+        }
+        bin_str[bin_idx] = '\0';
+
+        printf("| %-2d | %-22s | %-31s | 0x%08X |\n",
+               instr_count,
+               trimmed,
+               bin_str,
+               binary);
+        
+        // Store instruction for merged output
+        instructions[total_instrs++] = binary;
+        instr_count++;
+    }
+
+    printf("+----+------------------------+---------------------------------+----------+\n");
+    
+    // Print merged binary and hex
+    if (total_instrs > 0) {
+        printf("\n=== Merged Binary (Execution Order) ===\n");
+        for (int i = 0; i < total_instrs; i++) {
+            for (int bit = 31; bit >= 0; bit--) {
+                printf("%c", (instructions[i] & (1 << bit)) ? '1' : '0');
+            }
+        }
+        printf("\n\n=== Merged Hexadecimal ===\n");
+        for (int i = 0; i < total_instrs; i++) {
+            printf("%08X", instructions[i]);
+        }
+        printf("\n");
+    }
+    
+    fclose(file);
 }
 
 int main() {
@@ -823,6 +967,7 @@ int main() {
     // Generate MIPS64 code only if no errors
     if (error_list_head == NULL) {
         generate_mips64();
+        convert_mips64_to_binhex("output.txt");
     }
     
     print_errors();

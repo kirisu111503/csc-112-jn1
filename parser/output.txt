@@ -1,0 +1,33 @@
+.data
+x: .word 12
+y: .byte 98
+to_day_is_what: .space 8
+
+.text
+.globl main
+main:
+    # Declaration: x = 12
+    daddiu r1, r0, 12      # Load value into register
+    dla r8, x              # Load address of x
+    sd r1, 0(r8)           # Store to memory
+
+    # Assignment: x = 503
+    daddiu r1, r0, 503      # Load immediate value
+    dla r8, x              # Load address of x
+    sd r1, 0(r8)           # Store to memory
+
+    # Declaration: y = 98
+    daddiu r2, r0, 98      # Load value into register
+    dla r8, y              # Load address of y
+    sb r2, 0(r8)           # Store byte to memory
+
+    # Declaration: to_day_is_what (uninitialized)
+
+    # Assignment: to_day_is_what = x
+    dla r8, x              # Load address of x
+    ld r3, 0(r8)           # Load value from memory
+    dla r8, to_day_is_what              # Load address of to_day_is_what
+    sd r3, 0(r8)           # Store to memory
+
+    daddiu r31, r0, 10      # Exit syscall
+    syscall
