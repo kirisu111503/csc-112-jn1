@@ -1,5 +1,6 @@
-int x = 1;
-x = 23;
+int x  = 12;
+x = 503;
 
-char y = 'a';
-y = x;
+char x = 'a';
+
+char y = 'b';

@@ -46,7 +46,6 @@ typedef struct history{
     int data_type;       // TYPE_INT or TYPE_CHAR (for declarations)
     int has_value;       // Whether it has an initial/assigned value
     int value;           // The value (if has_value is true)
-    char *source_variable; // NEW: for variable-to-variable assignments (e.g., y = x)
     char *original_line; // Store the original line for reference
     struct history *next;
 } history;
@@ -63,7 +62,7 @@ vars* find_variable(const char *id);
 int add_variable(const char *id, int data_type, int line_num);
 void set_variable_value(const char *id, int int_val, const char *str_val);
 void add_error(int line_num, const char *error_type, const char *line_content);
-void add_history_with_source(int line_num, int op_type, const char *var_name, int data_type, int has_val, int val, const char *source_var, const char *original_line);
+void add_history(int line_num, int op_type, const char *var_name, int data_type, int has_val, int val, const char *original_line);
 void print_symbol_table();
 void print_errors();
 void print_history();
@@ -75,7 +74,6 @@ char* extract_variable_name(const char *declaration);
 char* extract_data_type(const char *declaration);
 char* extract_value(const char *declaration);
 int is_declaration(const char *line);
-int is_variable_name(const char *str);
 void process_declaration(const char *declaration, int line_num);
 void process_assignment(const char *assignment, int line_num);
 
@@ -154,6 +152,7 @@ void add_error(int line_num, const char *error_type, const char *line_content) {
         if (new_error->line_content) free(new_error->line_content);
         free(new_error);
         fprintf(stderr, "Memory allocation failed for error\n");
+        exit(EXIT_FAILURE);
     }
     
     new_error->next = error_list_head;
@@ -166,10 +165,18 @@ void add_error(int line_num, const char *error_type, const char *line_content) {
         fprintf(stderr, "Content: %s\n", new_error->line_content);
     }
     fprintf(stderr, "======================\n");
+    fprintf(stderr, "Program terminated due to error.\n\n");
+    
+    // Clean up before exit
+    free_symbol_table();
+    free_error_list();
+    free_history();
+    
+    exit(EXIT_FAILURE);
 }
 
-// Add an entry to the history with source variable tracking
-void add_history_with_source(int line_num, int op_type, const char *var_name, int data_type, int has_val, int val, const char *source_var, const char *original_line) {
+// Add an entry to the history
+void add_history(int line_num, int op_type, const char *var_name, int data_type, int has_val, int val, const char *original_line) {
     history *new_entry = (history*)malloc(sizeof(history));
     if (new_entry == NULL) {
         fprintf(stderr, "Memory allocation failed for history\n");
@@ -182,7 +189,6 @@ void add_history_with_source(int line_num, int op_type, const char *var_name, in
     new_entry->data_type = data_type;
     new_entry->has_value = has_val;
     new_entry->value = val;
-    new_entry->source_variable = source_var ? strdup(source_var) : NULL;
     new_entry->original_line = original_line ? strdup(original_line) : NULL;
     new_entry->next = NULL;
     
@@ -305,25 +311,6 @@ int is_declaration(const char *line) {
     return result;
 }
 
-// Check if a string is a valid variable name (not a number or char literal)
-int is_variable_name(const char *str) {
-    if (str == NULL || strlen(str) == 0) return 0;
-    
-    // Check if it's a char literal ('a')
-    if (str[0] == '\'') return 0;
-    
-    // Check if it's a number
-    if (isdigit(str[0]) || (str[0] == '-' && strlen(str) > 1 && isdigit(str[1]))) {
-        return 0;
-    }
-    
-    // Check if first character is valid (letter or underscore)
-    if (!isalpha(str[0]) && str[0] != '_') return 0;
-    
-    // Valid variable name
-    return 1;
-}
-
 // Process a variable declaration (with data type)
 void process_declaration(const char *declaration, int line_num) {
     if (declaration == NULL) return;
@@ -341,54 +328,31 @@ void process_declaration(const char *declaration, int line_num) {
             
             int has_val = 0;
             int int_val = 0;
-            char *source_var = NULL;
             
             // If has assignment, set the value
             if (value) {
                 has_val = 1;
-                
-                // Check if value is a variable name
-                if (is_variable_name(value)) {
-                    vars *source = find_variable(value);
-                    if (source != NULL) {
-                        // Variable-to-variable assignment
-                        source_var = strdup(value);
-                        int_val = source->data.val;
+                // Parse the value (simplified - you can enhance this)
+                if (data_type == TYPE_INT) {
+                    int_val = atoi(value);
+                    set_variable_value(var_name, int_val, NULL);
+                    printf("  -> Variable '%s' initialized with value %d\n", var_name, int_val);
+                } else if (data_type == TYPE_CHAR) {
+                    // Handle char value (e.g., 'A' or 65)
+                    if (value[0] == '\'') {
+                        int_val = value[1];
                         set_variable_value(var_name, int_val, NULL);
-                        printf("  -> Variable '%s' initialized from variable '%s' (value: %d)\n", 
-                               var_name, value, int_val);
+                        printf("  -> Variable '%s' initialized with value '%c'\n", var_name, (char)int_val);
                     } else {
-                        add_error(line_num, ERROR_UNDECLARED, declaration);
-                        free(var_name);
-                        free(data_type_str);
-                        free(value);
-                        return;
-                    }
-                } else {
-                    // Direct value assignment
-                    if (data_type == TYPE_INT) {
                         int_val = atoi(value);
                         set_variable_value(var_name, int_val, NULL);
                         printf("  -> Variable '%s' initialized with value %d\n", var_name, int_val);
-                    } else if (data_type == TYPE_CHAR) {
-                        // Handle char value (e.g., 'A' or 65)
-                        if (value[0] == '\'') {
-                            int_val = value[1];
-                            set_variable_value(var_name, int_val, NULL);
-                            printf("  -> Variable '%s' initialized with value '%c'\n", var_name, (char)int_val);
-                        } else {
-                            int_val = atoi(value);
-                            set_variable_value(var_name, int_val, NULL);
-                            printf("  -> Variable '%s' initialized with value %d\n", var_name, int_val);
-                        }
                     }
                 }
             }
             
-            // Add to history with source variable tracking
-            add_history_with_source(line_num, OP_DECLARATION, var_name, data_type, has_val, int_val, source_var, declaration);
-            
-            if (source_var) free(source_var);
+            // Add to history
+            add_history(line_num, OP_DECLARATION, var_name, data_type, has_val, int_val, declaration);
         }
         // If add_variable returns 0, error has already been logged and program terminated
     }
@@ -418,50 +382,28 @@ void process_assignment(const char *assignment, int line_num) {
         printf("  -> Reassigning variable '%s'\n", var_name);
         
         int int_val = 0;
-        char *source_var = NULL;
         
         // Update the value
         if (value) {
-            // Check if value is a variable name
-            if (is_variable_name(value)) {
-                vars *source = find_variable(value);
-                if (source != NULL) {
-                    // Variable-to-variable assignment
-                    source_var = strdup(value);
-                    int_val = source->data.val;
+            if (var->data_type == TYPE_INT) {
+                int_val = atoi(value);
+                set_variable_value(var_name, int_val, NULL);
+                printf("  -> Variable '%s' updated with value %d\n", var_name, int_val);
+            } else if (var->data_type == TYPE_CHAR) {
+                // Handle char value (e.g., 'A' or 65)
+                if (value[0] == '\'') {
+                    int_val = value[1];
                     set_variable_value(var_name, int_val, NULL);
-                    printf("  -> Variable '%s' updated from variable '%s' (value: %d)\n", 
-                           var_name, value, int_val);
+                    printf("  -> Variable '%s' updated with value '%c'\n", var_name, (char)int_val);
                 } else {
-                    add_error(line_num, ERROR_UNDECLARED, assignment);
-                    free(var_name);
-                    free(value);
-                    return;
-                }
-            } else {
-                // Direct value assignment
-                if (var->data_type == TYPE_INT) {
                     int_val = atoi(value);
                     set_variable_value(var_name, int_val, NULL);
                     printf("  -> Variable '%s' updated with value %d\n", var_name, int_val);
-                } else if (var->data_type == TYPE_CHAR) {
-                    // Handle char value (e.g., 'A' or 65)
-                    if (value[0] == '\'') {
-                        int_val = value[1];
-                        set_variable_value(var_name, int_val, NULL);
-                        printf("  -> Variable '%s' updated with value '%c'\n", var_name, (char)int_val);
-                    } else {
-                        int_val = atoi(value);
-                        set_variable_value(var_name, int_val, NULL);
-                        printf("  -> Variable '%s' updated with value %d\n", var_name, int_val);
-                    }
                 }
             }
             
-            // Add to history with source variable tracking
-            add_history_with_source(line_num, OP_ASSIGNMENT, var_name, var->data_type, 1, int_val, source_var, assignment);
-            
-            if (source_var) free(source_var);
+            // Add to history
+            add_history(line_num, OP_ASSIGNMENT, var_name, var->data_type, 1, int_val, assignment);
         }
     }
     
@@ -485,7 +427,7 @@ void print_symbol_table() {
     while (current != NULL) {
         printf("%-15s ", current->id);
         printf("%-10s ", current->data_type == TYPE_INT ? "int" : "char");
-        printf("$%-9d ", current->reg_num);
+        printf("r%-9d ", current->reg_num);
         
         if (current->has_value) {
             if (current->data_type == TYPE_INT) {
@@ -535,8 +477,8 @@ void print_history() {
     }
     
     printf("\n=== Operation History (for MIPS64 Generation) ===\n");
-    printf("%-6s %-15s %-12s %-10s %-20s %-15s\n", "Line", "Operation", "Variable", "Type", "Value", "Source Var");
-    printf("--------------------------------------------------------------------------------------------\n");
+    printf("%-6s %-15s %-12s %-10s %-20s\n", "Line", "Operation", "Variable", "Type", "Value");
+    printf("--------------------------------------------------------------------------------\n");
     
     history *current = history_head;
     while (current != NULL) {
@@ -560,17 +502,10 @@ void print_history() {
             if (current->data_type == TYPE_INT) {
                 printf("%-20d", current->value);
             } else {
-                printf("'%c' (%-16d)", (char)current->value, current->value);
+                printf("'%c' (%d)", (char)current->value, current->value);
             }
         } else {
             printf("%-20s", "(uninitialized)");
-        }
-        
-        // Print source variable
-        if (current->source_variable) {
-            printf("%-15s", current->source_variable);
-        } else {
-            printf("%-15s", "-");
         }
         
         printf("\n");
@@ -582,114 +517,100 @@ void print_history() {
 // Generate MIPS64 code from history and write to output.txt
 void generate_mips64() {
     FILE *output_file = fopen("output.txt", "w");
-    if (!output_file) {
+    if (output_file == NULL) {
         printf("Error: Could not create output.txt file\n");
         return;
     }
-
-    if (!history_head) {
+    
+    if (history_head == NULL) {
         fprintf(output_file, "# No operations to generate\n");
+        printf("\n=== MIPS64 Code ===\n");
+        printf("# No operations to generate\n\n");
         fclose(output_file);
         return;
     }
-
-    // --- DATA SECTION ---
+    
+    // Write header comments
+    fprintf(output_file, "# MIPS64 Code (64-bit instruction format)\n");
+    fprintf(output_file, "# Generated from operation history\n");
+    fprintf(output_file, "# Register r0 is always 0\n");
+    fprintf(output_file, "# Variables are allocated to registers r1-r31\n\n");
+    
+    // Data section
     fprintf(output_file, ".data\n");
-
-    // Walk history for declarations
-    history *cur_hist = history_head;
-    while (cur_hist) {
-        if (cur_hist->operation_type == OP_DECLARATION) {
-            vars *v = find_variable(cur_hist->variable_name);
-            if (!v) { cur_hist = cur_hist->next; continue; }
-
-            if (v->data_type == TYPE_INT) {
-                if (cur_hist->has_value) {
-                    // Use the initial value stored in history
-                    fprintf(output_file, "%s: .word %d\n", v->id, cur_hist->value);
-                } else {
-                    fprintf(output_file, "%s: .space 8   # uninitialized int (r%d)\n", v->id, v->reg_num);
-                }
-            } else { // TYPE_CHAR
-                if (cur_hist->has_value) {
-                    fprintf(output_file, "%s: .byte %d\n", v->id, cur_hist->value & 0xFF);
-                } else {
-                    fprintf(output_file, "%s: .space 1   # uninitialized char (r%d)\n", v->id, v->reg_num);
-                }
-            }
-        }
-        cur_hist = cur_hist->next;
-    }
-
-
-    fprintf(output_file, "\n.text\n");
+    fprintf(output_file, "# Data section (if needed for future extensions)\n\n");
+    
+    // Text section
+    fprintf(output_file, ".text\n");
     fprintf(output_file, ".globl main\n");
     fprintf(output_file, "main:\n");
-
-    // --- TEXT SECTION: use history to emit operations in order ---
+    
+    // Process each operation in history
     history *current = history_head;
-    while (current) {
-        fprintf(output_file, "    # Line %d: %s\n",
-                current->line_num,
-                current->original_line ? current->original_line : "");
-
-        vars *dst = find_variable(current->variable_name);
-        if (!dst) {
-            fprintf(output_file, "    # ERROR: Variable '%s' not found in symbol table\n\n",
-                    current->variable_name);
+    while (current != NULL) {
+        // Add comment with original source line
+        fprintf(output_file, "    # Line %d: %s\n", current->line_num, 
+               current->original_line ? current->original_line : "");
+        
+        // Find the variable to get its register
+        vars *var = find_variable(current->variable_name);
+        if (var == NULL) {
+            fprintf(output_file, "    # ERROR: Variable '%s' not found in symbol table\n", 
+                   current->variable_name);
             current = current->next;
             continue;
         }
-
+        
         if (current->operation_type == OP_DECLARATION) {
             if (current->has_value) {
-                // initialize register assigned to variable
-                fprintf(output_file, "    daddiu r%d, r0, %d    # %s %s = %d\n",
-                        dst->reg_num,
-                        current->value,
-                        dst->data_type == TYPE_INT ? "int" : "char",
-                        current->variable_name,
-                        current->value);
+                // Declaration with initialization
+                // Use daddiu for immediate load (unsigned immediate add)
+                fprintf(output_file, "    daddiu $%d, $0, %d    # %s %s = %d\n", 
+                       var->reg_num, current->value, 
+                       current->data_type == TYPE_INT ? "int" : "char",
+                       current->variable_name, current->value);
             } else {
-                fprintf(output_file, "    # %s %s declared (uninitialized) -> r%d\n",
-                        dst->data_type == TYPE_INT ? "int" : "char",
-                        current->variable_name,
-                        dst->reg_num);
+                // Declaration without initialization (just a comment)
+                fprintf(output_file, "    # %s %s declared (uninitialized) -> $%d\n",
+                       current->data_type == TYPE_INT ? "int" : "char",
+                       current->variable_name, var->reg_num);
             }
         } else if (current->operation_type == OP_ASSIGNMENT) {
-            if (current->source_variable) {
-                vars *src = find_variable(current->source_variable);
-                if (src) {
-                    fprintf(output_file, "    daddu r%d, r0, r%d    # %s = %s\n",
-                            dst->reg_num,
-                            src->reg_num,
-                            current->variable_name,
-                            current->source_variable);
-                } else {
-                    fprintf(output_file, "    # ERROR: Source variable '%s' not found\n",
-                            current->source_variable);
-                }
-            } else {
-                // immediate assignment
-                fprintf(output_file, "    daddiu r%d, r0, %d    # %s = %d\n",
-                        dst->reg_num,
-                        current->value,
-                        current->variable_name,
-                        current->value);
-            }
+            // Assignment (reassignment of value)
+            fprintf(output_file, "    daddiu $%d, $0, %d    # %s = %d\n", 
+                   var->reg_num, current->value,
+                   current->variable_name, current->value);
         }
-
+        
         fprintf(output_file, "\n");
         current = current->next;
     }
-
-    // --- Exit: put syscall number into r31 then syscall ---
+    
+    // Exit syscall
     fprintf(output_file, "    # Program exit\n");
-    fprintf(output_file, "    daddiu r31, r0, 10     # syscall code 10 (exit) -> r31\n");
-    fprintf(output_file, "    syscall                # exit program\n\n");
-
+    fprintf(output_file, "    daddiu $v0, $0, 10     # syscall code 10 (exit)\n");
+    fprintf(output_file, "    syscall                # exit program\n");
+    fprintf(output_file, "\n");
+    
+    // Print register allocation summary
+    fprintf(output_file, "# Register Allocation Summary:\n");
+    fprintf(output_file, "# $0  : constant 0 (hardwired)\n");
+    vars *v = symbol_table;
+    while (v != NULL) {
+        fprintf(output_file, "# $%-2d : %s (%s)\n", v->reg_num, v->id, 
+               v->data_type == TYPE_INT ? "int" : "char");
+        v = v->next;
+    }
+    fprintf(output_file, "\n");
+    
+    // Close the file
     fclose(output_file);
-    printf("\n=== MIPS64 Code Generated Successfully (with .data) ===\n");
+    
+    // Also print to console for user feedback
+    printf("\n=== MIPS64 Code Generated ===\n");
+    printf("Output written to: output.txt\n");
+    printf("Register format: MIPS64 standard ($0-$31)\n");
+    printf("Instructions used: daddiu, daddu, syscall\n\n");
 }
 
 // Free symbol table memory
@@ -738,9 +659,6 @@ void free_history() {
         if (temp->variable_name != NULL) {
             free(temp->variable_name);
         }
-        if (temp->source_variable != NULL) {
-            free(temp->source_variable);
-        }
         if (temp->original_line != NULL) {
             free(temp->original_line);
         }
@@ -753,7 +671,7 @@ void free_history() {
 int main() {
     const char *pattern[] = {
         "^(([[:space:]]*(int|char)[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*)(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?[[:space:]]*;[[:space:]]*)+$",
-        "^[[:space:]]*((int|char)[[:space:]]+)?[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*((=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')+([[:space:]]*)*)?)*(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?[[:space:]]*(,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?[[:space:]]*)*;[[:space:]]*$",
+        "^[[:space:]]*((int|char)[[:space:]]+)?[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*((=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')+([[:space:]]*)*)?)*(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?(,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?[[:space:]]*)*;[[:space:]]*$",
     };
     
     // Open input.txt file
