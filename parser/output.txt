@@ -1,25 +1,14 @@
 .data
-x: .word 12
-y: .byte 98
-to_day_is_what: .space 8
+x: .space 8
 
 .text
-.globl main
 main:
-    daddiu r1, r0, 12
-    dla r8, x 
-    sd r1, 0(r8)       
+    daddiu r8, r0, 3
+    daddiu r9, r0, 1
+    daddiu r10, r0, 1
+    daddu r9, r9, r10
+    dmult r8, r9
+    mflo r8
+    sd r8, x(r0)
 
-    daddiu r2, r0, 98
-    dla r8, y 
-    sb r2, 0(r8)        
-
-
-
-    dla r8, x              
-    ld r3, 0(r8)         
-    dla r8, to_day_is_what              
-    sd r3, 0(r8)          
-
-    daddiu r31, r0, 10     
-    syscall
+    syscall 0

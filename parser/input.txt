@@ -1,5 +1,1 @@
-int x  = 12;
-char y = 'b';
-int to_day_is_what;
-
-to_day_is_what = x;
+int x = 3 * (1 + 1);
