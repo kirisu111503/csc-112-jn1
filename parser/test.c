@@ -18,7 +18,7 @@
 #define ERROR_SYNTAX "Syntax error"
 #define ERROR_UNDECLARED "Undeclared variable"
 
-// --- NEW: Abstract Syntax Tree (AST) Nodes ---
+// --- Abstract Syntax Tree (AST) Nodes ---
 typedef enum
 {
     NODE_NUMBER,

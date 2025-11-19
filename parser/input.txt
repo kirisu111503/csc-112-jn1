@@ -1,1 +1,7 @@
-int x = 3 * (1 + 1);
+int x;
+int y = 5;
+x = 10;
+int result = (x + y) * 2;
+
+int a, b, c;
+int d = 1, f, q = 2;
