@@ -59,7 +59,7 @@ typedef struct vars
         char *str_val;
     } data;
     int has_value;
-    int reg_num; // This is the *destination* register
+    int reg_num; //*destination* register
     struct vars *next;
 } vars;
 
@@ -92,8 +92,8 @@ vars *symbol_table = NULL;
 errorList *error_list_head = NULL;
 history *history_head = NULL;
 history *history_tail = NULL;
-int next_register = 1;      // Start from r1 (r0 is reserved)
-int next_temp_register = 8; // Start using r8 for temp calculations
+int next_register = 1;      // start from r1 (r0 is reserved)
+int next_temp_register = 8; // start using r8 for temp calculations
 
 // --- Function Prototypes for AST ---
 AstNode *create_number_node(int value);
@@ -131,9 +131,9 @@ AstNode *parse_expression(); // Handles + and -
 AstNode *parse_term();       // Handles * and /
 AstNode *parse_atom();       // Handles numbers, vars, (and parentheses)
 
-// --- NEW: AST Helper Functions ---
+// --- AST Helper Functions ---
 
-// Creates a simple number node
+// create a simple number node
 AstNode *create_number_node(int value)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -142,7 +142,7 @@ AstNode *create_number_node(int value)
     return node;
 }
 
-// Creates a node for a variable name
+// create node for a variable name
 AstNode *create_variable_node(char *var_name)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -151,7 +151,7 @@ AstNode *create_variable_node(char *var_name)
     return node;
 }
 
-// Creates a binary operation node (the "blueprint")
+// create binary operation node (the "blueprint")
 AstNode *create_binary_op_node(char op, AstNode *left, AstNode *right)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -162,7 +162,7 @@ AstNode *create_binary_op_node(char op, AstNode *left, AstNode *right)
     return node;
 }
 
-// Recursively frees all memory associated with an AST
+// recursively frees all memory associated with an AST
 void free_ast(AstNode *node)
 {
     if (!node)
@@ -182,7 +182,7 @@ void free_ast(AstNode *node)
 
 // --- End of AST Helper Functions ---
 
-// Find a variable in the symbol table
+// find a variable in the symbol table
 vars *find_variable(const char *id)
 {
     vars *current = symbol_table;
@@ -197,7 +197,7 @@ vars *find_variable(const char *id)
     return NULL;
 }
 
-// Add a new variable to the symbol table
+// add a new variable to the symbol table
 int add_variable(const char *id, int data_type, int line_num)
 {
     if (find_variable(id) != NULL)
@@ -226,7 +226,7 @@ int add_variable(const char *id, int data_type, int line_num)
     return 1;
 }
 
-// Set the value of an existing variable
+// set the value of an existing variable
 // NOTE: This is only for the *compiler's* tracking (constant folding).
 void set_variable_value_in_table(const char *id, int int_val)
 {
@@ -241,7 +241,7 @@ void set_variable_value_in_table(const char *id, int int_val)
     }
 }
 
-// Add an error to the error list
+// add an error to the error list
 void add_error(int line_num, const char *error_type, const char *line_content)
 {
     errorList *new_error = (errorList *)malloc(sizeof(errorList));
@@ -263,7 +263,7 @@ void add_error(int line_num, const char *error_type, const char *line_content)
     fprintf(stderr, "----------------------\n");
 }
 
-// --- MODIFIED: Add History Entry ---
+// --- History Entry ---
 void add_history_entry(int line_num, int op_type, const char *var_name, int data_type, AstNode *tree, const char *original_line)
 {
     history *new_entry = (history *)malloc(sizeof(history));
@@ -292,7 +292,7 @@ void add_history_entry(int line_num, int op_type, const char *var_name, int data
     }
 }
 
-// (Helper functions for string extraction are unchanged)
+//(Helper functions for string extraction
 char *extract_variable_name(const char *declaration)
 {
     if (declaration == NULL)
@@ -392,17 +392,17 @@ int is_declaration(const char *line)
 // --- PEMDAS-COMPLIANT PARSER (NOW BUILDS AN AST) ---
 
 // Global helper for the parser
-static const char *g_expr_ptr; // Points to the current character in the expression
-static int g_line_num;         // The current line number for error reporting
+static const char *g_expr_ptr; // points to the current character in the expression
+static int g_line_num;         // current line number for error reporting
 
-// Parses an "atom": number, variable, or (parentheses)
+// parses an "atom": number, variable, or (parentheses)
 AstNode *parse_atom()
 {
     while (isspace(*g_expr_ptr))
         g_expr_ptr++;
     const char *start = g_expr_ptr;
 
-    // Atom: Number (e.g., 5, -10)
+    // atom: Number (e.g., 5, -10)
     if (isdigit(*start) || (*start == '-' && isdigit(start[1])))
     {
         g_expr_ptr++;
@@ -414,7 +414,7 @@ AstNode *parse_atom()
         return create_number_node(atoi(num_str));
     }
 
-    // Atom: Char (e.g., 'A')
+    // atom: Char (e.g., 'A')
     if (*start == '\'')
     {
         g_expr_ptr++;
@@ -424,7 +424,7 @@ AstNode *parse_atom()
         return create_number_node(char_val);
     }
 
-    // Atom: Variable (e.g., y)
+    // atom: Variable (e.g., y)
     if (isalpha(*start) || *start == '_')
     {
         g_expr_ptr++;
@@ -442,7 +442,7 @@ AstNode *parse_atom()
         return create_variable_node(var_name);
     }
 
-    // Atom: Parentheses (e.g., (5 + y))
+    // atom: Parentheses (e.g., (5 + y))
     if (*start == '(')
     {
         g_expr_ptr++;                       // Consume '('
@@ -459,7 +459,7 @@ AstNode *parse_atom()
     return create_number_node(0);
 }
 
-// Handles * and / (Higher Precedence)
+// handles * and / high Precedence)
 AstNode *parse_term()
 {
     AstNode *left_node = parse_atom();
@@ -484,7 +484,7 @@ AstNode *parse_term()
     return left_node;
 }
 
-// Handles + and - (Lower Precedence)
+// handles + and - lower Precedence
 AstNode *parse_expression()
 {
     AstNode *left_node = parse_term();
@@ -509,7 +509,7 @@ AstNode *parse_expression()
     return left_node;
 }
 
-// Main entry point for the expression parser
+// main entry point for the expression parser
 AstNode *parse_expression_to_ast(const char *expression_str, int line_num)
 {
     if (expression_str == NULL)
@@ -541,7 +541,7 @@ AstNode *parse_expression_to_ast(const char *expression_str, int line_num)
     return tree;
 }
 
-// --- MODIFIED: process_declaration ---
+// ---  process_declaration ---
 void process_declaration(const char *declaration, int line_num)
 {
     if (declaration == NULL)
@@ -603,7 +603,7 @@ void process_declaration(const char *declaration, int line_num)
     free(data_type_str);
 }
 
-// --- MODIFIED: process_assignment ---
+// --- process_assignment ---
 void process_assignment(const char *assignment, int line_num)
 {
     if (assignment == NULL)
@@ -638,7 +638,7 @@ void process_assignment(const char *assignment, int line_num)
         free(value);
 }
 
-// (Print functions are unchanged, but I'll add a helper for print_history)
+// PRINT FUnctIONS
 void print_symbol_table()
 {
     if (symbol_table == NULL)
@@ -750,14 +750,13 @@ void print_history()
     printf("\n");
 }
 
-// --- REWRITTEN: generate_mips64 ---
+// ---  generate_mips64 ---
 
-// This recursive function walks the AST and generates MIPS code.
-// It returns the temporary register number that holds the final result.
+// recursive function walks the AST and generates MIPS code THEN returns the temporary register number that holds the final result.
 int generate_mips_for_ast(FILE *output_file, AstNode *node)
 {
     if (!node)
-        return 0; // Should not happen
+        return 0; // Should not happen (error)
 
     int reg_num;
     switch (node->type)
@@ -784,15 +783,14 @@ int generate_mips_for_ast(FILE *output_file, AstNode *node)
 
     case NODE_BINARY_OP:
     {
-        // --- This is the core logic ---
-        // 1. Generate code for the left side
+        // 1. generate code for the left side
         int left_reg = generate_mips_for_ast(output_file, node->op_details.left);
-        // 2. Generate code for the right side
+        // 2. generate code for the right side
         int right_reg = generate_mips_for_ast(output_file, node->op_details.right);
 
         // 3. `left_reg` now holds the result of the left side.
         //    `right_reg` holds the result of the right side.
-        //    We can re-use `left_reg` for the final result.
+        //    re-use `left_reg` for the final result.
 
         switch (node->op_details.op)
         {
@@ -805,20 +803,18 @@ int generate_mips_for_ast(FILE *output_file, AstNode *node)
             fprintf(output_file, "    dsubu r%d, r%d, r%d\n", left_reg, left_reg, right_reg);
             break;
         case '*':
-            // --- FIX FOR EDUMIPS64 ---
-            // Use classic HI/LO registers instead of dmul
+            // use HI/LO registers for dmul
             fprintf(output_file, "    dmult r%d, r%d\n", left_reg, right_reg);
             fprintf(output_file, "    mflo r%d\n", left_reg); // Move result from LO to left_reg
             break;
         case '/':
-            // --- FIX FOR EDUMIPS64 ---
-            // Use classic HI/LO registers instead of ddiv
+            // Use  HI/LO registers for ddiv
             fprintf(output_file, "    ddiv r%d, r%d\n", left_reg, right_reg);
             fprintf(output_file, "    mflo r%d\n", left_reg); // Move quotient from LO to left_reg
             break;
         }
 
-        // The result is now in left_reg. We can free right_reg for later use.
+        // result is now in left_reg.  free right_reg for later use.
         next_temp_register--; // Frees right_reg
         return left_reg;      // Return the register that holds the result
     }
@@ -878,7 +874,7 @@ void generate_mips64()
             // The final result will be in the register returned by this call
             int final_result_reg = generate_mips_for_ast(output_file, current->expression_tree);
 
-            // Now, store that final result from the temp reg into the variable's memory
+            // store final result from the temp reg into the variable's memory
             if (dst->data_type == TYPE_INT)
             {
                 fprintf(output_file, "    sd r%d, %s(r0)\n", final_result_reg, dst->id);
@@ -1137,7 +1133,6 @@ void convert_mips64_to_binhex(char *filename)
                 parsed = 1;
             }
         }
-        // --- EDITED TO PARSE NEW INSTRUCTIONS ---
         else if (strcmp(instr_only, "daddu") == 0 || strcmp(instr_only, "dsubu") == 0)
         {
             if (sscanf(trimmed, "%15s %7[^,], %7[^,], %7s", instr, rd, rs, rt) == 4)
@@ -1153,10 +1148,8 @@ void convert_mips64_to_binhex(char *filename)
         }
         else if (strcmp(instr_only, "dmult") == 0 || strcmp(instr_only, "ddiv") == 0)
         {
-            // --- FIX 1: sscanf must return 3, not 2 ---
             if (sscanf(trimmed, "%15s %7[^,], %7s", instr, rs, rt) == 3)
             {
-                // --- FIX 2: Add whitespace cleaning ---
                 char *rs_clean = rs;
                 while (*rs_clean == ' ')
                     rs_clean++;
@@ -1167,7 +1160,6 @@ void convert_mips64_to_binhex(char *filename)
                 int rs_num = get_register_number(rs_clean);
                 int rt_num = get_register_number(rt_clean);
 
-                // --- FIX 3: Correct funct code for dmult (0x1C) ---
                 int funct = (strcmp(instr_only, "dmult") == 0) ? 0x1C : 0x1E;
                 binary = (0x00 << 26) | (rs_num << 21) | (rt_num << 16) | (0x00 << 11) | (0x00 << 6) | funct;
                 strcpy(format_type, "R-type");
@@ -1178,7 +1170,6 @@ void convert_mips64_to_binhex(char *filename)
         {
             if (sscanf(trimmed, "%15s %7s", instr, rd) == 2)
             {
-                // --- FIX 4: Add whitespace cleaning ---
                 char *rd_clean = rd;
                 while (*rd_clean == ' ')
                     rd_clean++;
@@ -1219,7 +1210,6 @@ void convert_mips64_to_binhex(char *filename)
 int main()
 {
     const char *pattern[] = {
-        // Updated regex to be simpler and allow parentheses
         "^[[:space:]]*(int|char)[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*([[:space:]]*,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*)*([[:space:]]*=[^;]+)?[[:space:]]*;[[:space:]]*$",
         "^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*=[^;]+;[[:space:]]*$"};
 
@@ -1253,7 +1243,7 @@ int main()
         // printf("Line %d: %s\n", line_num, line);
         int matched = 0;
 
-        // Try matching with both patterns
+        // try match with both patterns
         for (int p = 0; p < 2; p++)
         {
             if (regcomp(&regex, pattern[p], REG_EXTENDED) == 0)
