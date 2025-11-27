@@ -836,23 +836,31 @@ void generate_mips64()
         return;
     }
 
+    printf("\n=== Generate Assembly Code === \n");
+
     fprintf(output_file, ".data\n");
+    printf(".data\n");
+
     vars *cur_var = symbol_table;
     while (cur_var)
     {
         if (cur_var->data_type == TYPE_INT)
         {
             fprintf(output_file, "%s: .space 8\n", cur_var->id);
+            printf("%s: .space 8\n", cur_var->id);
         }
         else
         {
             fprintf(output_file, "%s: .space 1\n", cur_var->id);
+            printf("%s: .space 1\n", cur_var->id);
         }
         cur_var = cur_var->next;
     }
 
     fprintf(output_file, "\n.text\n");
+    printf("\n.text\n");
     fprintf(output_file, "main:\n");
+    printf("main:\n");
 
     history *current = history_head;
     while (current)
@@ -878,10 +886,12 @@ void generate_mips64()
             if (dst->data_type == TYPE_INT)
             {
                 fprintf(output_file, "    sd r%d, %s(r0)\n", final_result_reg, dst->id);
+                printf("    sd r%d, %s(r0)\n", final_result_reg, dst->id);
             }
             else
             {
                 fprintf(output_file, "    sb r%d, %s(r0)\n", final_result_reg, dst->id);
+                printf("    sb r%d, %s(r0)\n", final_result_reg, dst->id);
             }
         }
         fprintf(output_file, "\n");
@@ -1054,7 +1064,7 @@ void convert_mips64_to_binhex(char *filename)
     uint32_t instructions[1024];
     char formats[1024][16];
     int total_instrs = 0;
-    printf("\n=== MIPS64 Code with Instruction Field Format ===\n");
+    printf("\n\n=== MIPS64 Code with Instruction Field Format ===\n");
     printf("+----+------------------------+-------------------------------------------+----------+\n");
     printf("| No | Instruction            | Binary Fields                             | Hex      |\n");
     printf("+----+------------------------+-------------------------------------------+----------+\n");
