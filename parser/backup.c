@@ -588,12 +588,12 @@ void process_declaration(const char *declaration, int line_num)
 
         if (add_variable(var_name, data_type, line_num))
         {
-            // printf("  -> Variable '%s' declared as %s\n", var_name, data_type_str);
+            printf("  -> Variable '%s' declared as %s\n", var_name, data_type_str);
             if (value_str)
             {
                 // Parse the expression into an AST
                 tree = parse_expression_to_ast(value_str, line_num);
-                // printf("  -> Parsed expression for '%s'\n", var_name);
+                printf("  -> Parsed expression for '%s'\n", var_name);
             }
             add_history_entry(line_num, OP_DECLARATION, var_name, data_type, tree, declaration);
         }
@@ -623,12 +623,12 @@ void process_assignment(const char *assignment, int line_num)
                 free(value);
             return;
         }
-        // printf("  -> Reassigning variable '%s'\n", var_name);
+        printf("  -> Reassigning variable '%s'\n", var_name);
         if (value)
         {
             // Parse the expression into an AST
             tree = parse_expression_to_ast(value, line_num);
-            // printf("  -> Parsed expression for '%s'\n", var_name);
+            printf("  -> Parsed expression for '%s'\n", var_name);
         }
         add_history_entry(line_num, OP_ASSIGNMENT, var_name, var->data_type, tree, assignment);
     }
@@ -897,6 +897,7 @@ void generate_mips64()
     fprintf(output_file, "    syscall 0\n");
 
     fclose(output_file);
+    printf("\n=== MIPS64 Code Generated Successfully (with AST) ===\n");
 }
 
 // Free symbol table memory
@@ -1212,7 +1213,28 @@ void convert_mips64_to_binhex(char *filename)
         instr_count++;
     }
     printf("+----+------------------------+-------------------------------------------+----------+\n");
-
+    printf("\n=== Instruction Format Legend ===\n");
+    printf("I-type: opcode(6) | rs(5) | rt(5) | immediate(16)\n");
+    printf("R-type: opcode(6) | rs(5) | rt(5) | rd(5) | shamt(5) | funct(6)\n");
+    /*
+    if (total_instrs > 0)
+    {
+        printf("\n=== Merged Binary (Execution Order) ===\n");
+        for (int i = 0; i < total_instrs; i++)
+        {
+            for (int bit = 31; bit >= 0; bit--)
+            {
+                printf("%c", (instructions[i] & (1 << bit)) ? '1' : '0');
+            }
+        }
+        printf("\n\n=== Merged Hexadecimal ===\n");
+        for (int i = 0; i < total_instrs; i++)
+        {
+            printf("%08X", instructions[i]);
+        }
+        printf("\n");
+    }
+    */
     fclose(file);
 }
 
@@ -1235,7 +1257,7 @@ int main()
     int line_num = 1;
     regex_t regex;
 
-    // printf("=== Processing Input File ===\n");
+    printf("=== Processing Input File ===\n");
 
     // Read file line by line
     while (fgets(line, sizeof(line), file) != NULL)
@@ -1250,7 +1272,7 @@ int main()
             line_num++;
             continue;
         }
-        // printf("Line %d: %s\n", line_num, line);
+        printf("Line %d: %s\n", line_num, line);
         int matched = 0;
 
         // Try matching with both patterns
@@ -1261,7 +1283,7 @@ int main()
                 if (regexec(&regex, line, 0, NULL, 0) == 0)
                 {
                     matched = 1;
-                    // printf("  -> Valid syntax, processing...\n");
+                    printf("  -> Valid syntax, processing...\n");
                     if (is_declaration(line))
                     {
                         process_declaration(line, line_num);
@@ -1284,7 +1306,7 @@ int main()
                 if (regexec(&regex, line, 0, NULL, 0) == 0)
                 {
                     matched = 1;
-                    // printf("  -> Valid syntax (simple decl), processing...\n");
+                    printf("  -> Valid syntax (simple decl), processing...\n");
                     process_declaration(line, line_num);
                 }
                 regfree(&regex);
@@ -1292,7 +1314,7 @@ int main()
         }
         if (!matched)
         {
-            // printf("  -> Syntax error detected\n");
+            printf("  -> Syntax error detected\n");
             add_error(line_num, ERROR_SYNTAX, line);
         }
         line_num++;
