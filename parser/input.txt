@@ -1,1 +1,4 @@
-2 + 1;
+int b;
+int a
+int c;
+int d

@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <regex.h>
 #include <ctype.h>
 #include <stdint.h>
 
@@ -646,7 +645,7 @@ void print_symbol_table()
         return;
     }
     printf("\n=== Symbol Table ===\n");
-    printf("%-15s %-10s %-10s %-15s\n", "Variable", "Type", "Register", "Value (Known by C)");
+    printf("%-15s %-10s %-10s\n", "Variable", "Type", "Register");
     printf("------------------------------------------------------------\n");
     vars *current = symbol_table;
     while (current != NULL)
@@ -654,21 +653,7 @@ void print_symbol_table()
         printf("%-15s ", current->id);
         printf("%-10s ", current->data_type == TYPE_INT ? "int" : "char");
         printf("$%-9d ", current->reg_num);
-        if (current->has_value)
-        {
-            if (current->data_type == TYPE_INT)
-            {
-                printf("%-15d", current->data.val);
-            }
-            else if (current->data_type == TYPE_CHAR)
-            {
-                printf("'%c' (%d)", (char)current->data.val, current->data.val);
-            }
-        }
-        else
-        {
-            printf("%-15s", "(uninitialized)");
-        }
+
         printf("\n");
         current = current->next;
     }
@@ -835,10 +820,10 @@ void generate_mips64()
         return;
     }
 
-    printf("\n=== Generate Assembly Code === \n");
+    // printf("\n=== Generate Assembly Code === \n");
 
     fprintf(output_file, ".data\n");
-    printf(".data\n");
+    // printf(".data\n");
 
     vars *cur_var = symbol_table;
     while (cur_var)
@@ -846,20 +831,20 @@ void generate_mips64()
         if (cur_var->data_type == TYPE_INT)
         {
             fprintf(output_file, "%s: .space 8\n", cur_var->id);
-            printf("%s: .space 8\n", cur_var->id);
+            // printf("%s: .space 8\n", cur_var->id);
         }
         else
         {
             fprintf(output_file, "%s: .space 1\n", cur_var->id);
-            printf("%s: .space 1\n", cur_var->id);
+            // printf("%s: .space 1\n", cur_var->id);
         }
         cur_var = cur_var->next;
     }
 
     fprintf(output_file, "\n.text\n");
-    printf("\n.text\n");
+    // printf("\n.text\n");
     fprintf(output_file, "main:\n");
-    printf("main:\n");
+    // printf("main:\n");
 
     history *current = history_head;
     while (current)
@@ -885,12 +870,12 @@ void generate_mips64()
             if (dst->data_type == TYPE_INT)
             {
                 fprintf(output_file, "    sd r%d, %s(r0)\n", final_result_reg, dst->id);
-                printf("    sd r%d, %s(r0)\n", final_result_reg, dst->id);
+                // printf("    sd r%d, %s(r0)\n", final_result_reg, dst->id);
             }
             else
             {
                 fprintf(output_file, "    sb r%d, %s(r0)\n", final_result_reg, dst->id);
-                printf("    sb r%d, %s(r0)\n", final_result_reg, dst->id);
+                // printf("    sb r%d, %s(r0)\n", final_result_reg, dst->id);
             }
         }
         fprintf(output_file, "\n");
@@ -1218,10 +1203,6 @@ void convert_mips64_to_binhex(char *filename)
 
 int main()
 {
-    const char *pattern[] = {
-        "^(([[:space:]]*(int|char)[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*)(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?[[:space:]]*;[[:space:]]*)+$",
-        "^[[:space:]]*((int|char)[[:space:]]+)?[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*((=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')+([[:space:]]*)*)?)*(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?(,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?[[:space:]]*)*;[[:space:]]*$",
-    };
     FILE *file = fopen("input.txt", "r");
     if (file == NULL)
     {
@@ -1282,10 +1263,74 @@ int main()
             char temp[1024];
             strcpy(temp, stmt);
 
+            // Remove semicolon and trim for checking if statement is empty
+            char check_empty[1024];
+            strcpy(check_empty, temp);
+            char *semi = strchr(check_empty, ';');
+            if (semi)
+                *semi = '\0';
+
+            // Trim whitespace
+            char *check_ptr = check_empty;
+            while (isspace(*check_ptr))
+                check_ptr++;
+            char *check_end = check_ptr + strlen(check_ptr) - 1;
+            while (check_end > check_ptr && isspace(*check_end))
+                *check_end-- = '\0';
+
+            // Skip completely empty statements (just semicolons)
+            if (*check_ptr == '\0')
+                continue;
+
+            // === CASE 1: Declaration (starts with int or char) ===
             // === CASE 1: Declaration (starts with int or char) ===
             if (is_declaration(temp))
             {
-                process_declaration(temp, line_num);
+                // Check if there's actually a variable name after the data type
+                char *temp_copy = strdup(temp);
+                char *data_type_str = extract_data_type(temp_copy);
+
+                if (data_type_str)
+                {
+                    // Check if there's anything after the data type
+                    char *after_type = temp_copy + strlen(data_type_str);
+                    while (isspace(*after_type))
+                        after_type++;
+
+                    // Remove semicolons and whitespace to check if empty
+                    char check_var[1024];
+                    strcpy(check_var, after_type);
+                    char *sc = strchr(check_var, ';');
+                    if (sc)
+                        *sc = '\0';
+
+                    // Trim
+                    char *cv_ptr = check_var;
+                    while (isspace(*cv_ptr))
+                        cv_ptr++;
+                    char *cv_end = cv_ptr + strlen(cv_ptr) - 1;
+                    while (cv_end > cv_ptr && isspace(*cv_end))
+                        *cv_end-- = '\0';
+
+                    // If nothing after data type, it's an error
+                    if (*cv_ptr == '\0')
+                    {
+                        add_error(line_num, ERROR_SYNTAX, "Data type without variable name");
+                        free(data_type_str);
+                        free(temp_copy);
+                    }
+                    else
+                    {
+                        free(data_type_str);
+                        free(temp_copy);
+                        process_declaration(temp, line_num);
+                    }
+                }
+                else
+                {
+                    free(temp_copy);
+                    process_declaration(temp, line_num);
+                }
             }
             // === CASE 2: Assignment (has = and left side is identifier) ===
             else if (strchr(temp, '=') != NULL)
@@ -1308,17 +1353,45 @@ int main()
                 {
                     process_assignment(temp, line_num);
                 }
-                // Otherwise: it's an expression like "2 + 1;" → ignore silently (like real C)
-                else
-                {
-                    // Do nothing — valid C allows this
-                }
             }
-            // === CASE 3: Pure expression (no =) → allowed in C, just ignore ===
+            // === CASE 3: Pure expression (no =) → evaluate and store in temp ===
             else
             {
-                // Example: 2 + 3 * 4;   → valid in C, no effect
-                // We just skip it — no error, no warning
+                // Remove semicolon before parsing
+                char expr_str[1024];
+                strcpy(expr_str, temp);
+                char *semicolon_pos = strchr(expr_str, ';');
+                if (semicolon_pos)
+                    *semicolon_pos = '\0';
+
+                // Trim any trailing whitespace
+                char *trim_end = expr_str + strlen(expr_str) - 1;
+                while (trim_end > expr_str && isspace(*trim_end))
+                {
+                    *trim_end = '\0';
+                    trim_end--;
+                }
+
+                // Parse the expression to build AST
+                AstNode *expr_tree = parse_expression_to_ast(expr_str, line_num);
+
+                if (expr_tree != NULL)
+                {
+                    // Create a temporary variable name for the result
+                    char temp_var[32];
+                    sprintf(temp_var, "__temp_%d", line_num);
+
+                    // Add temporary variable to symbol table
+                    if (add_variable(temp_var, TYPE_INT, line_num))
+                    {
+                        // Add to history as a special "EXPRESSION" type assignment
+                        add_history_entry(line_num, OP_ASSIGNMENT, temp_var, TYPE_INT, expr_tree, temp);
+
+                        printf("  -> Pure expression evaluated: ");
+                        print_history_ast(expr_tree);
+                        printf(" (stored in %s)\n", temp_var);
+                    }
+                }
             }
         }
         line_num++;
