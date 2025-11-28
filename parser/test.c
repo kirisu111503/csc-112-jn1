@@ -227,7 +227,6 @@ int add_variable(const char *id, int data_type, int line_num)
 }
 
 // set the value of an existing variable
-// NOTE: This is only for the *compiler's* tracking (constant folding).
 void set_variable_value_in_table(const char *id, int int_val)
 {
     vars *var = find_variable(id);
@@ -1220,10 +1219,9 @@ void convert_mips64_to_binhex(char *filename)
 int main()
 {
     const char *pattern[] = {
-        "^[[:space:]]*(int|char)[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*([[:space:]]*,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*)*([[:space:]]*=[^;]+)?[[:space:]]*;[[:space:]]*$",
-        "^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*=[^;]+;[[:space:]]*$"};
-
-    // Open input.txt file
+        "^(([[:space:]]*(int|char)[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*)(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?[[:space:]]*;[[:space:]]*)+$",
+        "^[[:space:]]*((int|char)[[:space:]]+)?[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*((=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')+([[:space:]]*)*)?)*(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?(,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*(=[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]')([[:space:]]*(\\+|\\-|\\*|\\/)[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+|'[a-zA-Z0-9_]'))*)?[[:space:]]*)*;[[:space:]]*$",
+    };
     FILE *file = fopen("input.txt", "r");
     if (file == NULL)
     {
@@ -1231,80 +1229,106 @@ int main()
         return 1;
     }
 
-    char line[1024];
+    char line[2048];
     int line_num = 1;
-    regex_t regex;
 
-    // printf("=== Processing Input File ===\n");
-
-    // Read file line by line
     while (fgets(line, sizeof(line), file) != NULL)
     {
-        size_t len = strlen(line);
-        if (len > 0 && line[len - 1] == '\n')
-        {
-            line[len - 1] = '\0';
-        }
-        if (strlen(line) == 0)
-        {
-            line_num++;
-            continue;
-        }
-        // printf("Line %d: %s\n", line_num, line);
-        int matched = 0;
+        // Remove newline
+        line[strcspn(line, "\n")] = 0;
 
-        // try match with both patterns
-        for (int p = 0; p < 2; p++)
+        char *input = line;
+
+        while (*input)
         {
-            if (regcomp(&regex, pattern[p], REG_EXTENDED) == 0)
+            // Skip whitespace
+            while (isspace(*input))
+                input++;
+            if (*input == '\0')
+                break;
+
+            // Find next semicolon
+            char *semicolon = strchr(input, ';');
+            char stmt[1024];
+
+            if (!semicolon)
             {
-                if (regexec(&regex, line, 0, NULL, 0) == 0)
-                {
-                    matched = 1;
-                    // printf("  -> Valid syntax, processing...\n");
-                    if (is_declaration(line))
-                    {
-                        process_declaration(line, line_num);
-                    }
-                    else
-                    {
-                        process_assignment(line, line_num);
-                    }
-                }
-                regfree(&regex);
-                if (matched)
-                    break;
+                strncpy(stmt, input, sizeof(stmt) - 1);
+                stmt[sizeof(stmt) - 1] = '\0';
+                input += strlen(input);
             }
-        }
-        if (!matched)
-        {
-            // fallback for simple declarations that the complex regex might miss
-            if (regcomp(&regex, "^[[:space:]]*(int|char)[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*;[[:space:]]*$", REG_EXTENDED) == 0)
+            else
             {
-                if (regexec(&regex, line, 0, NULL, 0) == 0)
-                {
-                    matched = 1;
-                    // printf("  -> Valid syntax (simple decl), processing...\n");
-                    process_declaration(line, line_num);
-                }
-                regfree(&regex);
+                size_t len = semicolon - input + 1;
+                if (len >= sizeof(stmt))
+                    len = sizeof(stmt) - 1;
+                strncpy(stmt, input, len);
+                stmt[len] = '\0';
+                input = semicolon + 1;
             }
-        }
-        if (!matched)
-        {
-            // printf("  -> Syntax error detected\n");
-            add_error(line_num, ERROR_SYNTAX, line);
+
+            // Trim trailing whitespace
+            char *end = stmt + strlen(stmt) - 1;
+            while (end >= stmt && isspace(*end))
+                *end-- = '\0';
+
+            // Skip empty statements
+            char *start = stmt;
+            while (isspace(*start))
+                start++;
+            if (*start == '\0')
+                continue;
+
+            char temp[1024];
+            strcpy(temp, stmt);
+
+            // === CASE 1: Declaration (starts with int or char) ===
+            if (is_declaration(temp))
+            {
+                process_declaration(temp, line_num);
+            }
+            // === CASE 2: Assignment (has = and left side is identifier) ===
+            else if (strchr(temp, '=') != NULL)
+            {
+                char *eq = strchr(temp, '=');
+                char lhs[256] = {0};
+                strncpy(lhs, temp, eq - temp);
+                lhs[eq - temp] = '\0';
+
+                // Trim lhs
+                char *p = lhs;
+                while (isspace(*p))
+                    p++;
+                char *q = p + strlen(p) - 1;
+                while (q > p && isspace(*q))
+                    *q-- = '\0';
+
+                // If left side is a valid identifier → assignment
+                if (isalpha(p[0]) || p[0] == '_')
+                {
+                    process_assignment(temp, line_num);
+                }
+                // Otherwise: it's an expression like "2 + 1;" → ignore silently (like real C)
+                else
+                {
+                    // Do nothing — valid C allows this
+                }
+            }
+            // === CASE 3: Pure expression (no =) → allowed in C, just ignore ===
+            else
+            {
+                // Example: 2 + 3 * 4;   → valid in C, no effect
+                // We just skip it — no error, no warning
+            }
         }
         line_num++;
     }
 
     fclose(file);
 
-    // display results
     print_symbol_table();
     print_history();
 
-    // generate MIPS64 code only if no errors
     if (error_list_head == NULL)
     {
         generate_mips64();
@@ -1313,7 +1337,6 @@ int main()
 
     print_errors();
 
-    // Cleanup
     free_symbol_table();
     free_error_list();
     free_history();
