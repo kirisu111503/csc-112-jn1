@@ -1,5 +1,4 @@
-int x  = 12;
-char y = 'b';
-int to_day_is_what;
+char c = 1;
+char a = 2;
 
-to_day_is_what = x;
+char s = c + a;

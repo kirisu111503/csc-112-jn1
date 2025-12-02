@@ -62,16 +62,13 @@ extern int yylex();
 void yyerror(const char *fmt, ...);
 void printErrorTable();
 void cleanupErrorTable();
-int getVariableValue(char *variableName);
+void getVariableValue(char *variableName);
 void cleanupVariableTable();
 const char* typeName(char dt);
 vars* getVariable(char* variable);
 void createVariable(char *DTYPE, char* variable, int val, char *str_val);
 void variableReAssignment(char* variable, int val, char *str_val);
 void printVariableTable();
-
-
-
 %}
 
 
@@ -104,132 +101,18 @@ void printVariableTable();
 
 
 %%
-
-program:
-    statement_list
-    ;
-
-statement_list:
-    statement_list statement
-  | statement
-  ;
-
-statement:
-    DISPLAY '(' STRING ')' SEMI { 
-        printf("LINE %d: %s\n",yylineno , $3); 
-        free($3); 
-    }
-   | DISPLAY '(' VARIABLE ')' SEMI {
-        vars *var = getVariable($3);
-        if (var) {
-            if (var->data_type == 's') {
-                printf("LINE %d: %s\n", yylineno, var->data.str_val);
-            } else {
-                printf("LINE %d: %d\n",yylineno , var->data.val);
-            }
-        }
-        free($3);
-    }
-  | DISPLAY '(' expr ')' SEMI { 
-        printf("LINE %d: %d\n", yylineno, $3);
-    }
-  | DATA_TYPE {currentDataType = $1; } declaration_list SEMI {
-        currentDataType = NULL;
-    }
-  | assignment_list SEMI
-  | expr SEMI
-  | error SEMI {yyerrok; }
-  ;
-
-declaration_list:
-    var_decl
-  | declaration_list COMMA var_decl
-  ;
-
-assignment_list:
-    assignment
-  | assignment_list COMMA assignment
-  ;
-
-var_decl:
-    VARIABLE {
-        if(strcmp(currentDataType, "string")==0){
-            createVariable(currentDataType, $1, 0, "");
-        }else{
-            createVariable(currentDataType, $1, 0, NULL);
-        }
-        free($1);
-    }
-  | VARIABLE ASSIGNMENT expr {
-        createVariable(currentDataType, $1, $3, NULL);
-        free($1);
-    }
-  | VARIABLE ASSIGNMENT STRING{
-        createVariable(currentDataType, $1, 0, $3);
-        free($1);
-        free($3);
-    }
-  | VARIABLE ASSIGNMENT CHARACTER { 
-        createVariable(currentDataType, $1, (int)$3, NULL);
-        free($1);
-    }
-  ;
-
-assignment:
-    VARIABLE ASSIGNMENT expr {
-        variableReAssignment($1, $3, NULL);
-        free($1);
-    }
-  | VARIABLE ASSIGNMENT STRING {
-        variableReAssignment($1, 0, $3);
-        free($1);
-        free($3);
-    }
-  | VARIABLE ASSIGNMENT CHARACTER {
-        variableReAssignment($1, (int)$3, NULL);
-        free($1);
-    }
-  ;
-
-expr:
-    expr '+' term   {$$ = $1 + $3;}
-  | expr '-' term   {$$ = $1 - $3;}
-  | term            {$$ = $1;}
-  ;
-
-term:
-    term '*' factor {$$ = $1 * $3;}
-  | term '/' factor {
-        if($3 == 0){
-            yyerror("Division by zero, on line %d.", yylineno);
-            $$ = 0;
-        }else{
-            $$ = $1 / $3;
-        }
-    }
-  | factor {$$ = $1;}
-  ;
-
-factor:
-    '(' expr ')'    {$$ = $2;}
-  | INTEGER         {$$ = $1;}
-  | CHARACTER       {$$ = (int)$1;}
-  | VARIABLE        {
-            $$ = getVariableValue($1); 
-            free($1);
-        }
-  ;
+/* CFG */
 
 %%
 
 
 int main(void) {
-    printf("Welcome to my Custom Zypher!\n");
+    printf("Welcome to my Custom sPyC!\n");
     int result = yyparse();
-    if (headVars) printVariableTable();
-    if (headErrList) printErrorTable();
-    if (headErrList) cleanupErrorTable();
-    if (headVars) cleanupVariableTable();
+    if (headVars) printVariableTable(); // Display all Variables.
+    if (headErrList) printErrorTable(); // Display all erros if exist.
+    if (headErrList) cleanupErrorTable(); // Free memories alocated on error list.
+    if (headVars) cleanupVariableTable();  // Free memories of all variable list.
     return result;
 }
 
@@ -297,25 +180,22 @@ void cleanupErrorTable(){
 
 
 /*--------------- Variable handling ----------------------------*/
-//Free all memory for variable table
-
 int getVariableValue(char *variableName){
     if (isRecovering) return 0;
-
+    
     vars *existing = getVariable(variableName);
-
+    
     if(!existing){
         yyerror("Undefined variable %s, on line %d.", variableName, yylineno);
-        return 0;
+        return 0;  // Return default on error
     }
-
+    
     if(existing->data_type == 's'){
         yyerror("Cannot perform arithmetic operations on variable %s: string literals, on line %d.", variableName, yylineno);
         return 0;
     }
-
-    return existing->data.val;
-
+    
+    return existing->data.val;  // return the value
 }
 
 void cleanupVariableTable() {
@@ -350,63 +230,72 @@ vars* getVariable(char* variable) {
     return NULL; // not found
 }
 
-// Check and Create Variable
 void createVariable(char *DTYPE, char* variable, int val, char *str_val) {  
-    // For declaration and assignment
-    vars *existing = getVariable(variable);
-
+    // Validate variable name first
     if(isdigit(variable[0])){
         yyerror("Variable %s can't start in number, in line %d.", variable, yylineno);
         return;
     }
 
-    // Declaration with type keyword
+    vars *existing = getVariable(variable);
+
+    // Declaration with type keyword when variable exists
     if (existing && DTYPE && strlen(DTYPE) > 0) {
         yyerror("Variable '%s' is already declared with type '%s' on line %d", 
                 variable, typeName(existing->data_type), yylineno);
         return;
     }
 
-    // Assignment without type keyword
+    // Reassignment case (variable exists, no type keyword)
+    if (existing && (!DTYPE || strlen(DTYPE) == 0)) {
+        variableReAssignment(variable, val, str_val);
+        return;
+    }
+
+    // Assignment without type keyword when variable doesn't exist
     if (!existing && (!DTYPE || strlen(DTYPE) == 0)) {
         yyerror("Undefined variable '%s' on line %d", variable, yylineno);
         return;
     }
 
-    // Type/value mismatch check
-    if (DTYPE && strcmp(DTYPE, "int") == 0 && str_val != NULL) {
+    // DTYPE is now guaranteed to be non-NULL and non-empty
+
+    // Type/value mismatch checks
+    if (strcmp(DTYPE, "int") == 0 && str_val != NULL) {
         yyerror("Cannot assign string value to int variable '%s' on line %d", variable, yylineno);
         return;
     }
-    if (DTYPE && strcmp(DTYPE, "char") == 0 && str_val != NULL) {
+    if (strcmp(DTYPE, "char") == 0 && str_val != NULL) {
         yyerror("Cannot assign string value to char variable '%s' on line %d", variable, yylineno);
         return;
     }
-    if (DTYPE && strcmp(DTYPE, "string") == 0 && str_val == NULL) {
+    if (strcmp(DTYPE, "string") == 0 && str_val == NULL) {
         yyerror("Cannot assign non-string value to string variable '%s' on line %d", variable, yylineno);
         return;
     }
 
-
-    // no further error then proceed to create the variable
+    // Create the variable
     vars *newVar = calloc(1, sizeof(vars));
     if (!newVar) {
-        printf("Failed to allocate memory for variable '%s'\n", variable);
+        fprintf(stderr, "Failed to allocate memory for variable '%s'\n", variable);
         return;
     }
 
-    if (strcmp("int", DTYPE) == 0) {
+    if (strcmp(DTYPE, "int") == 0) {
         newVar->data_type = 'i';
         newVar->data.val = val;
-    } else if (strcmp("char", DTYPE) == 0) {
-        // NOTE: char stored as int (ASCII value)
+    } else if (strcmp(DTYPE, "char") == 0) {
         newVar->data_type = 'c';
         newVar->data.val = val;
-    } else if (strcmp("string", DTYPE) == 0) {
+    } else if (strcmp(DTYPE, "string") == 0) {
         newVar->data_type = 's';
         newVar->data.str_val = str_val ? strdup(str_val) : strdup("");
-    }
-    else {
+        if (!newVar->data.str_val) {
+            fprintf(stderr, "Failed to allocate memory for string value\n");
+            free(newVar);
+            return;
+        }
+    } else {
         yyerror("Invalid data type '%s' for variable '%s'", DTYPE, variable);
         free(newVar);
         return;
@@ -421,7 +310,6 @@ void createVariable(char *DTYPE, char* variable, int val, char *str_val) {
         return;
     }
 
-
     newVar->next = NULL;
 
     if (!headVars) {
@@ -433,8 +321,6 @@ void createVariable(char *DTYPE, char* variable, int val, char *str_val) {
 
     printf("Variable '%s' successfully created on line %d.\n", variable, yylineno);
 }
-//NOTE: createVariable both declaration and assignment, require a data type
-//NOTE: variableAssignment only re-assignment that doesn't require data type
 
 void variableReAssignment(char* variable, int val, char *str_val){
     vars *existing = getVariable(variable);
@@ -444,6 +330,7 @@ void variableReAssignment(char* variable, int val, char *str_val){
         return;
     }
 
+    // Type checking
     if (existing->data_type == 'i' && str_val != NULL) {
         yyerror("Cannot assign string value to int variable '%s' on line %d", variable, yylineno);
         return;
@@ -457,19 +344,22 @@ void variableReAssignment(char* variable, int val, char *str_val){
         return;
     }
 
-    //Assign value IDK
+    // Assign value
     if(existing->data_type == 'i' || existing->data_type == 'c'){
         existing->data.val = val;
-    }else{
-        free(existing->data.str_val);
-        existing->data.str_val = strdup(str_val ? str_val : "");
-        if(!existing->data.str_val){
+    } else {
+        // Allocate new string first (safer approach)
+        char *new_str = strdup(str_val ? str_val : "");
+        if(!new_str){
             yyerror("Failed to allocate memory for str value on line %d", yylineno);
-            return;
+            return;  // Old value preserved
         }
+        // Only free old string after successful allocation
+        free(existing->data.str_val);
+        existing->data.str_val = new_str;
     }
+    
     printf("Variable '%s' updated successfully on line %d.\n", variable, yylineno);
-
 }
 
 

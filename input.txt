@@ -1,10 +1,3 @@
-display("Wasap madafaker!");
-int x = 1;
-char x;
-char x = 1;
-display(x);
-
-
-string s = "csc - 112";
-display(s);
+int x, y ,z = 1;
+int a = 1+2*3/2;
 
