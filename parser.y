@@ -99,9 +99,123 @@ void printVariableTable();
 
 %type <num> expr term factor
 
-
+prog
 %%
-/* CFG */
+
+program:
+    statement_list
+    ;
+
+statement_list:
+    statement_list statement
+  | statement
+  ;
+
+statement:
+    DISPLAY '(' STRING ')' SEMI { 
+        printf("LINE %d: %s\n",yylineno , $3); 
+        free($3); 
+    }
+   | DISPLAY '(' VARIABLE ')' SEMI {
+        vars *var = getVariable($3);
+        if (var) {
+            if (var->data_type == 's') {
+                printf("LINE %d: %s\n", yylineno, var->data.str_val);
+            } else {
+                printf("LINE %d: %d\n",yylineno , var->data.val);
+            }
+        }
+        free($3);
+    }
+  | DISPLAY '(' expr ')' SEMI { 
+        printf("LINE %d: %d\n", yylineno, $3);
+    }
+  | DATA_TYPE {currentDataType = $1; } declaration_list SEMI {
+        currentDataType = NULL;
+    }
+  | assignment_list SEMI
+  | expr SEMI
+  | error SEMI {yyerrok; }
+  ;
+
+declaration_list:
+    var_decl
+  | declaration_list COMMA var_decl
+  ;
+
+assignment_list:
+    assignment
+  | assignment_list COMMA assignment
+  ;
+
+var_decl:
+    VARIABLE {
+        if(strcmp(currentDataType, "string")==0){
+            createVariable(currentDataType, $1, 0, "");
+        }else{
+            createVariable(currentDataType, $1, 0, NULL);
+        }
+        free($1);
+    }
+  | VARIABLE ASSIGNMENT expr {
+        createVariable(currentDataType, $1, $3, NULL);
+        free($1);
+    }
+  | VARIABLE ASSIGNMENT STRING{
+        createVariable(currentDataType, $1, 0, $3);
+        free($1);
+        free($3);
+    }
+  | VARIABLE ASSIGNMENT CHARACTER { 
+        createVariable(currentDataType, $1, (int)$3, NULL);
+        free($1);
+    }
+  ;
+
+assignment:
+    VARIABLE ASSIGNMENT expr {
+        variableReAssignment($1, $3, NULL);
+        free($1);
+    }
+  | VARIABLE ASSIGNMENT STRING {
+        variableReAssignment($1, 0, $3);
+        free($1);
+        free($3);
+    }
+  | VARIABLE ASSIGNMENT CHARACTER {
+        variableReAssignment($1, (int)$3, NULL);
+        free($1);
+    }
+  ;
+
+expr:
+    expr '+' term   {$$ = $1 + $3;}
+  | expr '-' term   {$$ = $1 - $3;}
+  | term            {$$ = $1;}
+  ;
+
+term:
+    term '*' factor {$$ = $1 * $3;}
+  | term '/' factor {
+        if($3 == 0){
+            yyerror("Division by zero, on line %d.", yylineno);
+            $$ = 0;
+        }else{
+            $$ = $1 / $3;
+        }
+    }
+  | factor {$$ = $1;}
+  ;
+
+factor:
+    '(' expr ')'    {$$ = $2;}
+  | INTEGER         {$$ = $1;}
+  | CHARACTER       {$$ = (int)$1;}
+  | VARIABLE        {
+            $$ = getVariableValue($1); 
+            free($1);
+        }
+  ;
 
 %%
 
