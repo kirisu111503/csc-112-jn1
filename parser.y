@@ -102,120 +102,143 @@ void printVariableTable();
 prog
 %%
 
+
 program:
     statement_list
     ;
 
+
 statement_list:
-    statement_list statement
-  | statement
-  ;
+    statement statement_list |
+    ;
 
 statement:
-    DISPLAY '(' STRING ')' SEMI { 
-        printf("LINE %d: %s\n",yylineno , $3); 
-        free($3); 
-    }
-   | DISPLAY '(' VARIABLE ')' SEMI {
-        vars *var = getVariable($3);
-        if (var) {
-            if (var->data_type == 's') {
-                printf("LINE %d: %s\n", yylineno, var->data.str_val);
-            } else {
-                printf("LINE %d: %d\n",yylineno , var->data.val);
-            }
-        }
-        free($3);
-    }
-  | DISPLAY '(' expr ')' SEMI { 
-        printf("LINE %d: %d\n", yylineno, $3);
-    }
-  | DATA_TYPE {currentDataType = $1; } declaration_list SEMI {
-        currentDataType = NULL;
-    }
-  | assignment_list SEMI
-  | expr SEMI
-  | error SEMI {yyerrok; }
-  ;
+    display_statment | 
+    declaration_statement | 
+    assignment_statement | 
+    expression_statement 
+    ; 
+
+display_statement:
+    DISPLAY "(" display_arg ")" ";"
+    ;
+
+display_arg:
+    string_literal |
+    char_literal |
+    identifier |
+    expression 
+    ;
+
+declaration_statement:
+    data_type declaration_list ";"
+    ;
+
+assignment_statement:
+    assignment_list
+    ;
+
+expression_statement:
+    expression
+    ;
+
+
 
 declaration_list:
-    var_decl
-  | declaration_list COMMA var_decl
-  ;
+    var_decl |
+    declaration_list "," var_decl
+    ;
 
-assignment_list:
-    assignment
-  | assignment_list COMMA assignment
-  ;
 
 var_decl:
-    VARIABLE {
-        if(strcmp(currentDataType, "string")==0){
-            createVariable(currentDataType, $1, 0, "");
-        }else{
-            createVariable(currentDataType, $1, 0, NULL);
-        }
-        free($1);
-    }
-  | VARIABLE ASSIGNMENT expr {
-        createVariable(currentDataType, $1, $3, NULL);
-        free($1);
-    }
-  | VARIABLE ASSIGNMENT STRING{
-        createVariable(currentDataType, $1, 0, $3);
-        free($1);
-        free($3);
-    }
-  | VARIABLE ASSIGNMENT CHARACTER { 
-        createVariable(currentDataType, $1, (int)$3, NULL);
-        free($1);
-    }
-  ;
+    identifier |
+    declaration_list "," expression |
+    identifier "=" string_literal |
+    identifier "=" char_literal
+    ;
+
+assignment_list:
+    assignment |
+    assignment_list "," assignment
+    ;
 
 assignment:
-    VARIABLE ASSIGNMENT expr {
-        variableReAssignment($1, $3, NULL);
-        free($1);
-    }
-  | VARIABLE ASSIGNMENT STRING {
-        variableReAssignment($1, 0, $3);
-        free($1);
-        free($3);
-    }
-  | VARIABLE ASSIGNMENT CHARACTER {
-        variableReAssignment($1, (int)$3, NULL);
-        free($1);
-    }
-  ;
+    identifier "=" expression |
+    identifier "=" string_literal |
+    identifier "=" char_literal
+    ;
 
-expr:
-    expr '+' term   {$$ = $1 + $3;}
-  | expr '-' term   {$$ = $1 - $3;}
-  | term            {$$ = $1;}
-  ;
+expression:
+    term |
+    expression "+" term |
+    expression "-" term 
+    ;
 
 term:
-    term '*' factor {$$ = $1 * $3;}
-  | term '/' factor {
-        if($3 == 0){
-            yyerror("Division by zero, on line %d.", yylineno);
-            $$ = 0;
-        }else{
-            $$ = $1 / $3;
-        }
-    }
-  | factor {$$ = $1;}
-  ;
+    factor | term "+" factor | term "/" factor 
+    ;
 
 factor:
-    '(' expr ')'    {$$ = $2;}
-  | INTEGER         {$$ = $1;}
-  | CHARACTER       {$$ = (int)$1;}
-  | VARIABLE        {
-            $$ = getVariableValue($1); 
-            free($1);
-        }
-  ;
+    "-" factor 
+    ;
+
+primary:
+    Number | char_literal | identifier | "(" expression ")" 
+    ;
+
+number:
+    digit number_tail
+    ;
+
+number_tail:
+    digit number_tail | 
+    ;
+
+digit:
+    DIGIT
+    ;
+
+
+data_type:
+    int | char | string
+    ;
+
+identifier:
+    letter id_tail 
+    ;
+
+id_tail:
+    letter id_tail |
+    digit id_tail |
+    "_" id_tail |
+    ;
+
+letter:
+    CHARACTER
+    ;
+
+char_literal:
+    "'"character"'"
+    ;
+
+character:
+    letter | digit | special_char 
+    ;
+
+string_literal:
+    "'"string_body"'"
+    ;
+string_body:
+    string_char string_body | 
+    ;
+
+string_char:
+    letter | digit | special_char | " "
+    ;
+
+special_char:
+    "!" | "@" | "#" | "$" | "%" | "^" | "&" | "*"| "(" | ")" | "-" | "_" | "+" | "=" | "{" | "}"| "[" | "]" | "|" | "" | ":" | ";" | "<" | ">"| "," | "." | "?" | "/" | "~" | "`" | " "
+    ;
 
 %%
 
