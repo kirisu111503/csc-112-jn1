@@ -84,6 +84,7 @@ void printVariableTable();
 %token ASSIGNMENT
 %token DISPLAY
 %token COMMA
+%token DIGIT
 %token SEMI
 %token <str> STRING 
 %token <num> INTEGER
@@ -141,8 +142,6 @@ assignment_statement:
 expression_statement:
     expression
     ;
-
-
 
 declaration_list:
     var_decl |
@@ -204,17 +203,13 @@ data_type:
     ;
 
 identifier:
-    letter id_tail 
+    CHARACTER id_tail 
     ;
 
 id_tail:
-    letter id_tail |
+    CHARACTER id_tail |
     digit id_tail |
     "_" id_tail |
-    ;
-
-letter:
-    CHARACTER
     ;
 
 char_literal:
@@ -222,7 +217,7 @@ char_literal:
     ;
 
 character:
-    letter | digit | special_char 
+    CHARACTER | DIGIT | special_char 
     ;
 
 string_literal:
@@ -233,7 +228,7 @@ string_body:
     ;
 
 string_char:
-    letter | digit | special_char | " "
+    CHARACTER | DIGIT | special_char | " "
     ;
 
 special_char:

@@ -27,7 +27,7 @@ extern int lineCount;
                                         }
 [0-9]+                                  { yylval.num = atoi(yytext); return INTEGER; }
 '.'                                     { yylval.character = yytext[1]; return CHARACTER; }
-
+[0-9]                                   { yylval.num = atoi(yytext); return DIGIT; }
 [-+*/()]                                { return yytext[0]; }
 ","                                     { return COMMA; }
 ";"                                     { return SEMI; }
