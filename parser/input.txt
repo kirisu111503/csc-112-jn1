@@ -1,4 +1,4 @@
-char c = 1;
-char a = 2;
-
-char s = c + a;
+int b;
+int a
+int c;
+int d

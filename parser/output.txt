@@ -1,0 +1,13 @@
+.data
+d: .space 8
+c: .space 8
+a: .space 8
+b: .space 8
+
+.text
+main:
+
+
+
+
+    syscall 0

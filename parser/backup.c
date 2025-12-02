@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 #include <ctype.h>
 #include <stdint.h>
 
@@ -58,7 +59,7 @@ typedef struct vars
         char *str_val;
     } data;
     int has_value;
-    int reg_num; //*destination* register
+    int reg_num; // This is the *destination* register
     struct vars *next;
 } vars;
 
@@ -91,8 +92,8 @@ vars *symbol_table = NULL;
 errorList *error_list_head = NULL;
 history *history_head = NULL;
 history *history_tail = NULL;
-int next_register = 1;      // start from r1 (r0 is reserved)
-int next_temp_register = 8; // start using r8 for temp calculations
+int next_register = 1;      // Start from r1 (r0 is reserved)
+int next_temp_register = 8; // Start using r8 for temp calculations
 
 // --- Function Prototypes for AST ---
 AstNode *create_number_node(int value);
@@ -130,9 +131,9 @@ AstNode *parse_expression(); // Handles + and -
 AstNode *parse_term();       // Handles * and /
 AstNode *parse_atom();       // Handles numbers, vars, (and parentheses)
 
-// --- AST Helper Functions ---
+// --- NEW: AST Helper Functions ---
 
-// create a simple number node
+// Creates a simple number node
 AstNode *create_number_node(int value)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -141,7 +142,7 @@ AstNode *create_number_node(int value)
     return node;
 }
 
-// create node for a variable name
+// Creates a node for a variable name
 AstNode *create_variable_node(char *var_name)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -150,7 +151,7 @@ AstNode *create_variable_node(char *var_name)
     return node;
 }
 
-// create binary operation node (the "blueprint")
+// Creates a binary operation node (the "blueprint")
 AstNode *create_binary_op_node(char op, AstNode *left, AstNode *right)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -161,7 +162,7 @@ AstNode *create_binary_op_node(char op, AstNode *left, AstNode *right)
     return node;
 }
 
-// recursively frees all memory associated with an AST
+// Recursively frees all memory associated with an AST
 void free_ast(AstNode *node)
 {
     if (!node)
@@ -181,7 +182,7 @@ void free_ast(AstNode *node)
 
 // --- End of AST Helper Functions ---
 
-// find a variable in the symbol table
+// Find a variable in the symbol table
 vars *find_variable(const char *id)
 {
     vars *current = symbol_table;
@@ -196,7 +197,7 @@ vars *find_variable(const char *id)
     return NULL;
 }
 
-// add a new variable to the symbol table
+// Add a new variable to the symbol table
 int add_variable(const char *id, int data_type, int line_num)
 {
     if (find_variable(id) != NULL)
@@ -225,7 +226,8 @@ int add_variable(const char *id, int data_type, int line_num)
     return 1;
 }
 
-// set the value of an existing variable
+// Set the value of an existing variable
+// NOTE: This is only for the *compiler's* tracking (constant folding).
 void set_variable_value_in_table(const char *id, int int_val)
 {
     vars *var = find_variable(id);
@@ -239,7 +241,7 @@ void set_variable_value_in_table(const char *id, int int_val)
     }
 }
 
-// add an error to the error list
+// Add an error to the error list
 void add_error(int line_num, const char *error_type, const char *line_content)
 {
     errorList *new_error = (errorList *)malloc(sizeof(errorList));
@@ -261,7 +263,7 @@ void add_error(int line_num, const char *error_type, const char *line_content)
     fprintf(stderr, "----------------------\n");
 }
 
-// --- History Entry ---
+// --- MODIFIED: Add History Entry ---
 void add_history_entry(int line_num, int op_type, const char *var_name, int data_type, AstNode *tree, const char *original_line)
 {
     history *new_entry = (history *)malloc(sizeof(history));
@@ -290,7 +292,7 @@ void add_history_entry(int line_num, int op_type, const char *var_name, int data
     }
 }
 
-//(Helper functions for string extraction
+// (Helper functions for string extraction are unchanged)
 char *extract_variable_name(const char *declaration)
 {
     if (declaration == NULL)
@@ -390,17 +392,17 @@ int is_declaration(const char *line)
 // --- PEMDAS-COMPLIANT PARSER (NOW BUILDS AN AST) ---
 
 // Global helper for the parser
-static const char *g_expr_ptr; // points to the current character in the expression
-static int g_line_num;         // current line number for error reporting
+static const char *g_expr_ptr; // Points to the current character in the expression
+static int g_line_num;         // The current line number for error reporting
 
-// parses an "atom": number, variable, or (parentheses)
+// Parses an "atom": number, variable, or (parentheses)
 AstNode *parse_atom()
 {
     while (isspace(*g_expr_ptr))
         g_expr_ptr++;
     const char *start = g_expr_ptr;
 
-    // atom: Number (e.g., 5, -10)
+    // Atom: Number (e.g., 5, -10)
     if (isdigit(*start) || (*start == '-' && isdigit(start[1])))
     {
         g_expr_ptr++;
@@ -412,7 +414,7 @@ AstNode *parse_atom()
         return create_number_node(atoi(num_str));
     }
 
-    // atom: Char (e.g., 'A')
+    // Atom: Char (e.g., 'A')
     if (*start == '\'')
     {
         g_expr_ptr++;
@@ -422,7 +424,7 @@ AstNode *parse_atom()
         return create_number_node(char_val);
     }
 
-    // atom: Variable (e.g., y)
+    // Atom: Variable (e.g., y)
     if (isalpha(*start) || *start == '_')
     {
         g_expr_ptr++;
@@ -440,7 +442,7 @@ AstNode *parse_atom()
         return create_variable_node(var_name);
     }
 
-    // atom: Parentheses (e.g., (5 + y))
+    // Atom: Parentheses (e.g., (5 + y))
     if (*start == '(')
     {
         g_expr_ptr++;                       // Consume '('
@@ -457,7 +459,7 @@ AstNode *parse_atom()
     return create_number_node(0);
 }
 
-// handles * and / high Precedence)
+// Handles * and / (Higher Precedence)
 AstNode *parse_term()
 {
     AstNode *left_node = parse_atom();
@@ -482,7 +484,7 @@ AstNode *parse_term()
     return left_node;
 }
 
-// handles + and - lower Precedence
+// Handles + and - (Lower Precedence)
 AstNode *parse_expression()
 {
     AstNode *left_node = parse_term();
@@ -507,7 +509,7 @@ AstNode *parse_expression()
     return left_node;
 }
 
-// main entry point for the expression parser
+// Main entry point for the expression parser
 AstNode *parse_expression_to_ast(const char *expression_str, int line_num)
 {
     if (expression_str == NULL)
@@ -539,7 +541,7 @@ AstNode *parse_expression_to_ast(const char *expression_str, int line_num)
     return tree;
 }
 
-// ---  process_declaration ---
+// --- MODIFIED: process_declaration ---
 void process_declaration(const char *declaration, int line_num)
 {
     if (declaration == NULL)
@@ -586,12 +588,12 @@ void process_declaration(const char *declaration, int line_num)
 
         if (add_variable(var_name, data_type, line_num))
         {
-            // printf("  -> Variable '%s' declared as %s\n", var_name, data_type_str);
+            printf("  -> Variable '%s' declared as %s\n", var_name, data_type_str);
             if (value_str)
             {
                 // Parse the expression into an AST
                 tree = parse_expression_to_ast(value_str, line_num);
-                // printf("  -> Parsed expression for '%s'\n", var_name);
+                printf("  -> Parsed expression for '%s'\n", var_name);
             }
             add_history_entry(line_num, OP_DECLARATION, var_name, data_type, tree, declaration);
         }
@@ -601,7 +603,7 @@ void process_declaration(const char *declaration, int line_num)
     free(data_type_str);
 }
 
-// --- process_assignment ---
+// --- MODIFIED: process_assignment ---
 void process_assignment(const char *assignment, int line_num)
 {
     if (assignment == NULL)
@@ -621,12 +623,12 @@ void process_assignment(const char *assignment, int line_num)
                 free(value);
             return;
         }
-        // printf("  -> Reassigning variable '%s'\n", var_name);
+        printf("  -> Reassigning variable '%s'\n", var_name);
         if (value)
         {
             // Parse the expression into an AST
             tree = parse_expression_to_ast(value, line_num);
-            // printf("  -> Parsed expression for '%s'\n", var_name);
+            printf("  -> Parsed expression for '%s'\n", var_name);
         }
         add_history_entry(line_num, OP_ASSIGNMENT, var_name, var->data_type, tree, assignment);
     }
@@ -636,7 +638,7 @@ void process_assignment(const char *assignment, int line_num)
         free(value);
 }
 
-// PRINT FUnctIONS
+// (Print functions are unchanged, but I'll add a helper for print_history)
 void print_symbol_table()
 {
     if (symbol_table == NULL)
@@ -645,7 +647,7 @@ void print_symbol_table()
         return;
     }
     printf("\n=== Symbol Table ===\n");
-    printf("%-15s %-10s %-10s\n", "Variable", "Type", "Register");
+    printf("%-15s %-10s %-10s %-15s\n", "Variable", "Type", "Register", "Value (Known by C)");
     printf("------------------------------------------------------------\n");
     vars *current = symbol_table;
     while (current != NULL)
@@ -653,7 +655,21 @@ void print_symbol_table()
         printf("%-15s ", current->id);
         printf("%-10s ", current->data_type == TYPE_INT ? "int" : "char");
         printf("$%-9d ", current->reg_num);
-
+        if (current->has_value)
+        {
+            if (current->data_type == TYPE_INT)
+            {
+                printf("%-15d", current->data.val);
+            }
+            else if (current->data_type == TYPE_CHAR)
+            {
+                printf("'%c' (%d)", (char)current->data.val, current->data.val);
+            }
+        }
+        else
+        {
+            printf("%-15s", "(uninitialized)");
+        }
         printf("\n");
         current = current->next;
     }
@@ -734,13 +750,14 @@ void print_history()
     printf("\n");
 }
 
-// ---  generate_mips64 ---
+// --- REWRITTEN: generate_mips64 ---
 
-// recursive function walks the AST and generates MIPS code THEN returns the temporary register number that holds the final result.
+// This recursive function walks the AST and generates MIPS code.
+// It returns the temporary register number that holds the final result.
 int generate_mips_for_ast(FILE *output_file, AstNode *node)
 {
     if (!node)
-        return 0; // Should not happen (error)
+        return 0; // Should not happen
 
     int reg_num;
     switch (node->type)
@@ -767,14 +784,15 @@ int generate_mips_for_ast(FILE *output_file, AstNode *node)
 
     case NODE_BINARY_OP:
     {
-        // 1. generate code for the left side
+        // --- This is the core logic ---
+        // 1. Generate code for the left side
         int left_reg = generate_mips_for_ast(output_file, node->op_details.left);
-        // 2. generate code for the right side
+        // 2. Generate code for the right side
         int right_reg = generate_mips_for_ast(output_file, node->op_details.right);
 
         // 3. `left_reg` now holds the result of the left side.
         //    `right_reg` holds the result of the right side.
-        //    re-use `left_reg` for the final result.
+        //    We can re-use `left_reg` for the final result.
 
         switch (node->op_details.op)
         {
@@ -787,18 +805,20 @@ int generate_mips_for_ast(FILE *output_file, AstNode *node)
             fprintf(output_file, "    dsubu r%d, r%d, r%d\n", left_reg, left_reg, right_reg);
             break;
         case '*':
-            // use HI/LO registers for dmul
+            // --- FIX FOR EDUMIPS64 ---
+            // Use classic HI/LO registers instead of dmul
             fprintf(output_file, "    dmult r%d, r%d\n", left_reg, right_reg);
             fprintf(output_file, "    mflo r%d\n", left_reg); // Move result from LO to left_reg
             break;
         case '/':
-            // Use  HI/LO registers for ddiv
+            // --- FIX FOR EDUMIPS64 ---
+            // Use classic HI/LO registers instead of ddiv
             fprintf(output_file, "    ddiv r%d, r%d\n", left_reg, right_reg);
             fprintf(output_file, "    mflo r%d\n", left_reg); // Move quotient from LO to left_reg
             break;
         }
 
-        // result is now in left_reg.  free right_reg for later use.
+        // The result is now in left_reg. We can free right_reg for later use.
         next_temp_register--; // Frees right_reg
         return left_reg;      // Return the register that holds the result
     }
@@ -820,31 +840,23 @@ void generate_mips64()
         return;
     }
 
-    // printf("\n=== Generate Assembly Code === \n");
-
     fprintf(output_file, ".data\n");
-    // printf(".data\n");
-
     vars *cur_var = symbol_table;
     while (cur_var)
     {
         if (cur_var->data_type == TYPE_INT)
         {
             fprintf(output_file, "%s: .space 8\n", cur_var->id);
-            // printf("%s: .space 8\n", cur_var->id);
         }
         else
         {
             fprintf(output_file, "%s: .space 1\n", cur_var->id);
-            // printf("%s: .space 1\n", cur_var->id);
         }
         cur_var = cur_var->next;
     }
 
     fprintf(output_file, "\n.text\n");
-    // printf("\n.text\n");
     fprintf(output_file, "main:\n");
-    // printf("main:\n");
 
     history *current = history_head;
     while (current)
@@ -866,18 +878,15 @@ void generate_mips64()
             // The final result will be in the register returned by this call
             int final_result_reg = generate_mips_for_ast(output_file, current->expression_tree);
 
-            // store final result from the temp reg into the variable's memory
+            // Now, store that final result from the temp reg into the variable's memory
             if (dst->data_type == TYPE_INT)
             {
                 fprintf(output_file, "    sd r%d, %s(r0)\n", final_result_reg, dst->id);
-                // printf("    sd r%d, %s(r0)\n", final_result_reg, dst->id);
             }
             else
             {
                 fprintf(output_file, "    sb r%d, %s(r0)\n", final_result_reg, dst->id);
-                // printf("    sb r%d, %s(r0)\n", final_result_reg, dst->id);
             }
-            fprintf(output_file, "\n");
         }
         fprintf(output_file, "\n");
         current = current->next;
@@ -888,8 +897,8 @@ void generate_mips64()
     fprintf(output_file, "    syscall 0\n");
 
     fclose(output_file);
+    printf("\n=== MIPS64 Code Generated Successfully (with AST) ===\n");
 }
-
 
 // Free symbol table memory
 void free_symbol_table()
@@ -1050,7 +1059,7 @@ void convert_mips64_to_binhex(char *filename)
     uint32_t instructions[1024];
     char formats[1024][16];
     int total_instrs = 0;
-    printf("\n\n=== MIPS64 Code with Instruction Field Format ===\n");
+    printf("\n=== MIPS64 Code with Instruction Field Format ===\n");
     printf("+----+------------------------+-------------------------------------------+----------+\n");
     printf("| No | Instruction            | Binary Fields                             | Hex      |\n");
     printf("+----+------------------------+-------------------------------------------+----------+\n");
@@ -1116,51 +1125,6 @@ void convert_mips64_to_binhex(char *filename)
                     }
                 }
             }
-            // Try parsing: instruction rt, label(rs) - for symbolic addresses
-            else {
-                char label[64];
-                if (sscanf(trimmed, "%15s %7[^,], %63[^(](%7[^)])", instr, rt, label, rs) == 4) {
-                    char *rt_clean = rt;
-                    while (*rt_clean == ' ') rt_clean++;
-                    char *rs_clean = rs;
-                    while (*rs_clean == ' ') rs_clean++;
-                    char *label_clean = label;
-                    while (*label_clean == ' ') label_clean++;
-                    // Remove trailing spaces from label
-                    int len = strlen(label_clean);
-                    while (len > 0 && (label_clean[len-1] == ' ' || label_clean[len-1] == '\t')) {
-                        label_clean[--len] = '\0';
-                    }
-                    
-                    int rt_num = get_register_number(rt_clean);
-                    int rs_num = get_register_number(rs_clean);
-                    
-                    // Use symbolic address placeholder (0x1000)
-                    int offset = 0x0000;
-                    
-                    if (strcmp(instr, "lw") == 0) {
-                        int opcode = 0x23;
-                        binary = (opcode << 26) | (rs_num << 21) | (rt_num << 16) | (offset & 0xFFFF);
-                        strcpy(format_type, "I-type");
-                        parsed = 1;
-                    } else if (strcmp(instr, "sw") == 0) {
-                        int opcode = 0x2B;
-                        binary = (opcode << 26) | (rs_num << 21) | (rt_num << 16) | (offset & 0xFFFF);
-                        strcpy(format_type, "I-type");
-                        parsed = 1;
-                    } else if (strcmp(instr, "lb") == 0) {
-                        int opcode = 0x20;
-                        binary = (opcode << 26) | (rs_num << 21) | (rt_num << 16) | (offset & 0xFFFF);
-                        strcpy(format_type, "I-type");
-                        parsed = 1;
-                    } else if (strcmp(instr, "sb") == 0) {
-                        int opcode = 0x28;
-                        binary = (opcode << 26) | (rs_num << 21) | (rt_num << 16) | (offset & 0xFFFF);
-                        strcpy(format_type, "I-type");
-                        parsed = 1;
-                    }
-                }
-            }
         }
         // daddiu (I-type)
         else if (strcmp(instr_only, "daddiu") == 0)
@@ -1174,6 +1138,7 @@ void convert_mips64_to_binhex(char *filename)
                 parsed = 1;
             }
         }
+        // --- EDITED TO PARSE NEW INSTRUCTIONS ---
         else if (strcmp(instr_only, "daddu") == 0 || strcmp(instr_only, "dsubu") == 0)
         {
             if (sscanf(trimmed, "%15s %7[^,], %7[^,], %7s", instr, rd, rs, rt) == 4)
@@ -1189,8 +1154,10 @@ void convert_mips64_to_binhex(char *filename)
         }
         else if (strcmp(instr_only, "dmult") == 0 || strcmp(instr_only, "ddiv") == 0)
         {
+            // --- FIX 1: sscanf must return 3, not 2 ---
             if (sscanf(trimmed, "%15s %7[^,], %7s", instr, rs, rt) == 3)
             {
+                // --- FIX 2: Add whitespace cleaning ---
                 char *rs_clean = rs;
                 while (*rs_clean == ' ')
                     rs_clean++;
@@ -1201,6 +1168,7 @@ void convert_mips64_to_binhex(char *filename)
                 int rs_num = get_register_number(rs_clean);
                 int rt_num = get_register_number(rt_clean);
 
+                // --- FIX 3: Correct funct code for dmult (0x1C) ---
                 int funct = (strcmp(instr_only, "dmult") == 0) ? 0x1C : 0x1E;
                 binary = (0x00 << 26) | (rs_num << 21) | (rt_num << 16) | (0x00 << 11) | (0x00 << 6) | funct;
                 strcpy(format_type, "R-type");
@@ -1211,6 +1179,7 @@ void convert_mips64_to_binhex(char *filename)
         {
             if (sscanf(trimmed, "%15s %7s", instr, rd) == 2)
             {
+                // --- FIX 4: Add whitespace cleaning ---
                 char *rd_clean = rd;
                 while (*rd_clean == ' ')
                     rd_clean++;
@@ -1244,12 +1213,39 @@ void convert_mips64_to_binhex(char *filename)
         instr_count++;
     }
     printf("+----+------------------------+-------------------------------------------+----------+\n");
-
+    printf("\n=== Instruction Format Legend ===\n");
+    printf("I-type: opcode(6) | rs(5) | rt(5) | immediate(16)\n");
+    printf("R-type: opcode(6) | rs(5) | rt(5) | rd(5) | shamt(5) | funct(6)\n");
+    /*
+    if (total_instrs > 0)
+    {
+        printf("\n=== Merged Binary (Execution Order) ===\n");
+        for (int i = 0; i < total_instrs; i++)
+        {
+            for (int bit = 31; bit >= 0; bit--)
+            {
+                printf("%c", (instructions[i] & (1 << bit)) ? '1' : '0');
+            }
+        }
+        printf("\n\n=== Merged Hexadecimal ===\n");
+        for (int i = 0; i < total_instrs; i++)
+        {
+            printf("%08X", instructions[i]);
+        }
+        printf("\n");
+    }
+    */
     fclose(file);
 }
 
 int main()
 {
+    const char *pattern[] = {
+        // Updated regex to be simpler and allow parentheses
+        "^[[:space:]]*(int|char)[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*([[:space:]]*,[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*)*([[:space:]]*=[^;]+)?[[:space:]]*;[[:space:]]*$",
+        "^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*=[^;]+;[[:space:]]*$"};
+
+    // Open input.txt file
     FILE *file = fopen("input.txt", "r");
     if (file == NULL)
     {
@@ -1257,198 +1253,80 @@ int main()
         return 1;
     }
 
-    char line[2048];
+    char line[1024];
     int line_num = 1;
+    regex_t regex;
 
+    printf("=== Processing Input File ===\n");
+
+    // Read file line by line
     while (fgets(line, sizeof(line), file) != NULL)
     {
-        // Remove newline
-        line[strcspn(line, "\n")] = 0;
-
-        char *input = line;
-
-        while (*input)
+        size_t len = strlen(line);
+        if (len > 0 && line[len - 1] == '\n')
         {
-            // Skip whitespace
-            while (isspace(*input))
-                input++;
-            if (*input == '\0')
-                break;
+            line[len - 1] = '\0';
+        }
+        if (strlen(line) == 0)
+        {
+            line_num++;
+            continue;
+        }
+        printf("Line %d: %s\n", line_num, line);
+        int matched = 0;
 
-            // Find next semicolon
-            char *semicolon = strchr(input, ';');
-            char stmt[1024];
-
-            if (!semicolon)
+        // Try matching with both patterns
+        for (int p = 0; p < 2; p++)
+        {
+            if (regcomp(&regex, pattern[p], REG_EXTENDED) == 0)
             {
-                strncpy(stmt, input, sizeof(stmt) - 1);
-                stmt[sizeof(stmt) - 1] = '\0';
-                input += strlen(input);
-            }
-            else
-            {
-                size_t len = semicolon - input + 1;
-                if (len >= sizeof(stmt))
-                    len = sizeof(stmt) - 1;
-                strncpy(stmt, input, len);
-                stmt[len] = '\0';
-                input = semicolon + 1;
-            }
-
-            // Trim trailing whitespace
-            char *end = stmt + strlen(stmt) - 1;
-            while (end >= stmt && isspace(*end))
-                *end-- = '\0';
-
-            // Skip empty statements
-            char *start = stmt;
-            while (isspace(*start))
-                start++;
-            if (*start == '\0')
-                continue;
-
-            char temp[1024];
-            strcpy(temp, stmt);
-
-            // Remove semicolon and trim for checking if statement is empty
-            char check_empty[1024];
-            strcpy(check_empty, temp);
-            char *semi = strchr(check_empty, ';');
-            if (semi)
-                *semi = '\0';
-
-            // Trim whitespace
-            char *check_ptr = check_empty;
-            while (isspace(*check_ptr))
-                check_ptr++;
-            char *check_end = check_ptr + strlen(check_ptr) - 1;
-            while (check_end > check_ptr && isspace(*check_end))
-                *check_end-- = '\0';
-
-            // Skip completely empty statements (just semicolons)
-            if (*check_ptr == '\0')
-                continue;
-
-            // === CASE 1: Declaration (starts with int or char) ===
-            // === CASE 1: Declaration (starts with int or char) ===
-            if (is_declaration(temp))
-            {
-                // Check if there's actually a variable name after the data type
-                char *temp_copy = strdup(temp);
-                char *data_type_str = extract_data_type(temp_copy);
-
-                if (data_type_str)
+                if (regexec(&regex, line, 0, NULL, 0) == 0)
                 {
-                    // Check if there's anything after the data type
-                    char *after_type = temp_copy + strlen(data_type_str);
-                    while (isspace(*after_type))
-                        after_type++;
-
-                    // Remove semicolons and whitespace to check if empty
-                    char check_var[1024];
-                    strcpy(check_var, after_type);
-                    char *sc = strchr(check_var, ';');
-                    if (sc)
-                        *sc = '\0';
-
-                    // Trim
-                    char *cv_ptr = check_var;
-                    while (isspace(*cv_ptr))
-                        cv_ptr++;
-                    char *cv_end = cv_ptr + strlen(cv_ptr) - 1;
-                    while (cv_end > cv_ptr && isspace(*cv_end))
-                        *cv_end-- = '\0';
-
-                    // If nothing after data type, it's an error
-                    if (*cv_ptr == '\0')
+                    matched = 1;
+                    printf("  -> Valid syntax, processing...\n");
+                    if (is_declaration(line))
                     {
-                        add_error(line_num, ERROR_SYNTAX, "Data type without variable name");
-                        free(data_type_str);
-                        free(temp_copy);
+                        process_declaration(line, line_num);
                     }
                     else
                     {
-                        free(data_type_str);
-                        free(temp_copy);
-                        process_declaration(temp, line_num);
+                        process_assignment(line, line_num);
                     }
                 }
-                else
-                {
-                    free(temp_copy);
-                    process_declaration(temp, line_num);
-                }
+                regfree(&regex);
+                if (matched)
+                    break;
             }
-            // === CASE 2: Assignment (has = and left side is identifier) ===
-            else if (strchr(temp, '=') != NULL)
+        }
+        if (!matched)
+        {
+            // fallback for simple declarations that the complex regex might miss
+            if (regcomp(&regex, "^[[:space:]]*(int|char)[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*;[[:space:]]*$", REG_EXTENDED) == 0)
             {
-                char *eq = strchr(temp, '=');
-                char lhs[256] = {0};
-                strncpy(lhs, temp, eq - temp);
-                lhs[eq - temp] = '\0';
-
-                // Trim lhs
-                char *p = lhs;
-                while (isspace(*p))
-                    p++;
-                char *q = p + strlen(p) - 1;
-                while (q > p && isspace(*q))
-                    *q-- = '\0';
-
-                // If left side is a valid identifier → assignment
-                if (isalpha(p[0]) || p[0] == '_')
+                if (regexec(&regex, line, 0, NULL, 0) == 0)
                 {
-                    process_assignment(temp, line_num);
+                    matched = 1;
+                    printf("  -> Valid syntax (simple decl), processing...\n");
+                    process_declaration(line, line_num);
                 }
+                regfree(&regex);
             }
-            // === CASE 3: Pure expression (no =) → evaluate and store in temp ===
-            else
-            {
-                // Remove semicolon before parsing
-                char expr_str[1024];
-                strcpy(expr_str, temp);
-                char *semicolon_pos = strchr(expr_str, ';');
-                if (semicolon_pos)
-                    *semicolon_pos = '\0';
-
-                // Trim any trailing whitespace
-                char *trim_end = expr_str + strlen(expr_str) - 1;
-                while (trim_end > expr_str && isspace(*trim_end))
-                {
-                    *trim_end = '\0';
-                    trim_end--;
-                }
-
-                // Parse the expression to build AST
-                AstNode *expr_tree = parse_expression_to_ast(expr_str, line_num);
-
-                if (expr_tree != NULL)
-                {
-                    // Create a temporary variable name for the result
-                    char temp_var[32];
-                    sprintf(temp_var, "__temp_%d", line_num);
-
-                    // Add temporary variable to symbol table
-                    if (add_variable(temp_var, TYPE_INT, line_num))
-                    {
-                        // Add to history as a special "EXPRESSION" type assignment
-                        add_history_entry(line_num, OP_ASSIGNMENT, temp_var, TYPE_INT, expr_tree, temp);
-
-                        printf("  -> Pure expression evaluated: ");
-                        print_history_ast(expr_tree);
-                        printf(" (stored in %s)\n", temp_var);
-                    }
-                }
-            }
+        }
+        if (!matched)
+        {
+            printf("  -> Syntax error detected\n");
+            add_error(line_num, ERROR_SYNTAX, line);
         }
         line_num++;
     }
 
     fclose(file);
 
+    // display results
     print_symbol_table();
     print_history();
 
+    // generate MIPS64 code only if no errors
     if (error_list_head == NULL)
     {
         generate_mips64();
@@ -1457,6 +1335,7 @@ int main()
 
     print_errors();
 
+    // Cleanup
     free_symbol_table();
     free_error_list();
     free_history();

@@ -1,0 +1,18 @@
+.data
+x: .word 0
+y: .word 0
+z: .word 0
+
+.text
+main:
+    daddiu r8, r0, 1
+    sd r8, x, r0
+
+    ld r9, x, r0
+    sd r9, y, r0
+
+    ld r10, y, r0
+    ld r11, x, r0
+    daddu r12, r10, r11
+    sd r12, z, r0
+
