@@ -15,7 +15,6 @@ extern int lineCount;
 "char"                                  { yylval.str = strdup("char"); return DATA_TYPE; }
 "string"                                { yylval.str = strdup("string"); return DATA_TYPE; }
 
-
 [a-zA-Z_][a-zA-Z0-9_]*                  { yylval.str = strdup(yytext); return VARIABLE; }
 "="                                     { return ASSIGNMENT; }
 \"[^\"]*\"                              { 
