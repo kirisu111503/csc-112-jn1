@@ -129,6 +129,7 @@ void convert_mips64_to_binhex(char *filename);
 AstNode *parse_expression_to_ast(const char *expression_str, int line_num);
 AstNode *parse_expression(); // Handles + and -
 AstNode *parse_term();       // Handles * and /
+AstNode *parse_unary();      // Handles unary + and -
 AstNode *parse_atom();       // Handles numbers, vars, (and parentheses)
 
 // --- AST Helper Functions ---
@@ -401,13 +402,15 @@ AstNode *parse_atom()
         g_expr_ptr++;
     const char *start = g_expr_ptr;
 
-    // atom: Number (e.g., 5, -10)
-    if (isdigit(*start) || (*start == '-' && isdigit(start[1])))
+    // atom: Number (e.g., 5) - positive only
+    if (isdigit(*start))
     {
+        tokCount++;
         g_expr_ptr++;
         while (isdigit(*g_expr_ptr))
-            tokCount++;
+        {
             g_expr_ptr++;
+        }
         char num_str[32];
         strncpy(num_str, start, g_expr_ptr - start);
         num_str[g_expr_ptr - start] = '\0';
@@ -418,11 +421,11 @@ AstNode *parse_atom()
     if (*start == '\'')
     {
         tokCount++;
-
         g_expr_ptr++;
         int char_val = *g_expr_ptr;
         g_expr_ptr++;
-        g_expr_ptr++; // Skip closing '
+        if (*g_expr_ptr == '\'')
+            g_expr_ptr++; // Skip closing '
         return create_number_node(char_val);
     }
 
@@ -454,10 +457,11 @@ AstNode *parse_atom()
         if (*g_expr_ptr != ')')
         {
             add_error(g_line_num, ERROR_SYNTAX, "Missing ')'");
-        } else {
+        }
+        else
+        {
             tokCount++;
             g_expr_ptr++; // Consume ')'
-
         }
         return node;
     }
@@ -466,10 +470,26 @@ AstNode *parse_atom()
     return create_number_node(0);
 }
 
-// handles * and / high Precedence)
+// handles unary + and -
+AstNode *parse_unary()
+{
+    while (isspace(*g_expr_ptr))
+        g_expr_ptr++;
+    char op = *g_expr_ptr;
+    if (op == '+' || op == '-')
+    {
+        tokCount++; // Count unary op as token
+        g_expr_ptr++;
+        AstNode *operand = parse_unary(); // Recurse for chained unaries like --
+        return create_binary_op_node(op, create_number_node(0), operand);
+    }
+    return parse_atom();
+}
+
+// handles * and / (high precedence)
 AstNode *parse_term()
 {
-    AstNode *left_node = parse_atom();
+    AstNode *left_node = parse_unary();
 
     while (1)
     {
@@ -481,7 +501,7 @@ AstNode *parse_term()
         {
             tokCount++;
             g_expr_ptr++;
-            AstNode *right_node = parse_atom();
+            AstNode *right_node = parse_unary();
             left_node = create_binary_op_node(op, left_node, right_node);
         }
         else
@@ -492,7 +512,7 @@ AstNode *parse_term()
     return left_node;
 }
 
-// handles + and - lower Precedence
+// handles + and - (lower precedence)
 AstNode *parse_expression()
 {
     AstNode *left_node = parse_term();
@@ -564,6 +584,7 @@ void process_declaration(const char *declaration, int line_num)
         free(line_copy);
         return;
     }
+    tokCount++; // for data type
     int data_type = (strcmp(data_type_str, "int") == 0) ? TYPE_INT : TYPE_CHAR;
     char *var_list_start = line_copy + strlen(data_type_str);
     while (isspace(*var_list_start))
@@ -582,6 +603,7 @@ void process_declaration(const char *declaration, int line_num)
         char *equals = strchr(var_name, '=');
         if (equals)
         {
+            tokCount++; // for =
             *equals = '\0';
             value_str = equals + 1;
         }
@@ -594,6 +616,7 @@ void process_declaration(const char *declaration, int line_num)
         }
         while (isspace(*var_name))
             var_name++;
+        tokCount++; // for var_name
 
         if (add_variable(var_name, data_type, line_num))
         {
@@ -632,6 +655,8 @@ void process_assignment(const char *assignment, int line_num)
                 free(value);
             return;
         }
+        tokCount++; // for var_name
+        tokCount++; // for =
         // printf("  -> Reassigning variable '%s'\n", var_name);
         if (value)
         {
@@ -901,7 +926,6 @@ void generate_mips64()
     fclose(output_file);
 }
 
-
 // Free symbol table memory
 void free_symbol_table()
 {
@@ -1128,43 +1152,56 @@ void convert_mips64_to_binhex(char *filename)
                 }
             }
             // Try parsing: instruction rt, label(rs) - for symbolic addresses
-            else {
+            else
+            {
                 char label[64];
-                if (sscanf(trimmed, "%15s %7[^,], %63[^(](%7[^)])", instr, rt, label, rs) == 4) {
+                if (sscanf(trimmed, "%15s %7[^,], %63[^(](%7[^)])", instr, rt, label, rs) == 4)
+                {
                     char *rt_clean = rt;
-                    while (*rt_clean == ' ') rt_clean++;
+                    while (*rt_clean == ' ')
+                        rt_clean++;
                     char *rs_clean = rs;
-                    while (*rs_clean == ' ') rs_clean++;
+                    while (*rs_clean == ' ')
+                        rs_clean++;
                     char *label_clean = label;
-                    while (*label_clean == ' ') label_clean++;
+                    while (*label_clean == ' ')
+                        label_clean++;
                     // Remove trailing spaces from label
                     int len = strlen(label_clean);
-                    while (len > 0 && (label_clean[len-1] == ' ' || label_clean[len-1] == '\t')) {
+                    while (len > 0 && (label_clean[len - 1] == ' ' || label_clean[len - 1] == '\t'))
+                    {
                         label_clean[--len] = '\0';
                     }
-                    
+
                     int rt_num = get_register_number(rt_clean);
                     int rs_num = get_register_number(rs_clean);
-                    
+
                     // Use symbolic address placeholder (0x1000)
                     int offset = 0x0000;
-                    
-                    if (strcmp(instr, "lw") == 0) {
+
+                    if (strcmp(instr, "lw") == 0)
+                    {
                         int opcode = 0x23;
                         binary = (opcode << 26) | (rs_num << 21) | (rt_num << 16) | (offset & 0xFFFF);
                         strcpy(format_type, "I-type");
                         parsed = 1;
-                    } else if (strcmp(instr, "sw") == 0) {
+                    }
+                    else if (strcmp(instr, "sw") == 0)
+                    {
                         int opcode = 0x2B;
                         binary = (opcode << 26) | (rs_num << 21) | (rt_num << 16) | (offset & 0xFFFF);
                         strcpy(format_type, "I-type");
                         parsed = 1;
-                    } else if (strcmp(instr, "lb") == 0) {
+                    }
+                    else if (strcmp(instr, "lb") == 0)
+                    {
                         int opcode = 0x20;
                         binary = (opcode << 26) | (rs_num << 21) | (rt_num << 16) | (offset & 0xFFFF);
                         strcpy(format_type, "I-type");
                         parsed = 1;
-                    } else if (strcmp(instr, "sb") == 0) {
+                    }
+                    else if (strcmp(instr, "sb") == 0)
+                    {
                         int opcode = 0x28;
                         binary = (opcode << 26) | (rs_num << 21) | (rt_num << 16) | (offset & 0xFFFF);
                         strcpy(format_type, "I-type");
@@ -1341,10 +1378,9 @@ int main()
                 continue;
 
             // === CASE 1: Declaration (starts with int or char) ===
-            // === CASE 1: Declaration (starts with int or char) ===
             if (is_declaration(temp))
             {
-                tokCount += 2;
+                // tokCount += 2; removed
                 // Check if there's actually a variable name after the data type
                 char *temp_copy = strdup(temp);
                 char *data_type_str = extract_data_type(temp_copy);
@@ -1394,8 +1430,7 @@ int main()
             // === CASE 2: Assignment (has = and left side is identifier) ===
             else if (strchr(temp, '=') != NULL)
             {
-                tokCount++;  // variable
-                tokCount++;  // =
+                // tokCount += 2; removed
                 char *eq = strchr(temp, '=');
                 char lhs[256] = {0};
                 strncpy(lhs, temp, eq - temp);

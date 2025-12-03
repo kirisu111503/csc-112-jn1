@@ -1,12 +1,21 @@
 .data
+y: .space 8
 x: .space 8
 
 .text
 main:
     daddiu r8, r0, 1
-    daddiu r9, r0, -2
+    daddiu r9, r0, 0
+    daddiu r10, r0, 2
+    dsubu r9, r9, r10
     dsubu r8, r8, r9
     sd r8, x(r0)
+
+
+    daddiu r8, r0, 5
+    daddiu r9, r0, 2
+    daddu r8, r8, r9
+    sd r8, y(r0)
 
 
     syscall 0
