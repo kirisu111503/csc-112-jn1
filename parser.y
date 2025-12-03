@@ -32,23 +32,6 @@ typedef struct logs{
 }logs;
 
 
-//Initialization of structure
-//Variables
-// extern vars *headVars;
-// extern vars *tailVars ;
-
-//errors
-// extern errorList *headErrList;
-// extern errorList *tailErrList;
-
-//logs
-// extern logs *headLogs;
-// extern logs *tailLogs;
-
-// extern char *currentDataType;
-
-extern int yylineno;
-
 vars *headVars = NULL;
 vars *tailVars = NULL;
 errorList *headErrList = NULL;
@@ -56,13 +39,16 @@ errorList *tailErrList = NULL;
 logs *headLogs = NULL;
 logs *tailLogs = NULL;
 char *currentDataType = NULL;
+char *currentVarBeingDeclared = NULL;  // Track variable being declared
 int isRecovering = 0;
+int hasError = 0;
 
+extern int yylineno;
 extern int yylex();
 void yyerror(const char *fmt, ...);
 void printErrorTable();
 void cleanupErrorTable();
-void getVariableValue(char *variableName);
+int getVariableValue(char *variableName);
 void cleanupVariableTable();
 const char* typeName(char dt);
 vars* getVariable(char* variable);
@@ -71,12 +57,19 @@ void variableReAssignment(char* variable, int val, char *str_val);
 void printVariableTable();
 %}
 
-
+// Define Disp struct BEFORE %union so it's available in parser.tab.h
+%code requires {
+    typedef struct {
+        int type;      // 1=string 2=char 3=int 4=id  
+        char* text;    // always printable
+    } Disp;
+}
 
 %union {
     int num;
     char character;
     char *str;
+    Disp  disp;
 }
 
 %token <str> DATA_TYPE
@@ -89,19 +82,17 @@ void printVariableTable();
 %token <num> INTEGER
 %token <character> CHARACTER
 
-%left COMMA
+// Operator precedence (lowest to highest)
+%right ASSIGNMENT
 %left '+' '-'
 %left '*' '/'
-%right ASSIGNMENT
+%precedence UMINUS
 
+%type <num> expression
+%type <disp> display_arg
+%type <str> data_type
 
-//All functions here
-
-%type <num> expr term factor
-
-prog
 %%
-
 
 program:
     statement_list
@@ -109,135 +100,537 @@ program:
 
 
 statement_list:
-    statement statement_list |
+    statement_list statement
+    | /* empty */
     ;
 
 statement:
-    display_statment | 
-    declaration_statement | 
-    assignment_statement | 
-    expression_statement 
+    display_statement {
+        if(hasError) YYABORT;
+    }
+    | declaration_statement {
+        if(hasError) YYABORT;
+    }
+    | assignment_statement {
+        if(hasError) YYABORT;
+    }
+    | error SEMI { 
+        yyerrok; 
+        hasError = 1;
+        YYABORT;
+    }
     ; 
 
 display_statement:
-    DISPLAY "(" display_arg ")" ";"
+    DISPLAY '(' display_arg ')' SEMI {
+        if(hasError) {
+            if($3.text != NULL) free($3.text);
+            YYABORT;
+        }
+        if($3.text != NULL){
+            printf("LINE %d: %s\n", yylineno, $3.text);
+            free($3.text);
+        }
+    }
     ;
 
 display_arg:
-    string_literal |
-    char_literal |
-    identifier |
-    expression 
+    STRING { 
+        $$.text = strdup($1);
+        $$.type = 1;
+        free($1);
+    }
+    | CHARACTER { 
+        char buffer[2];
+        buffer[0] = $1;
+        buffer[1] = '\0';
+        $$.text = strdup(buffer);
+        $$.type = 2;
+    }
+    | VARIABLE {
+        vars *var = getVariable($1);
+        if(!var){
+            yyerror("Undefined variable '%s' on line %d", $1, yylineno);
+            hasError = 1;
+            $$.text = NULL;
+            $$.type = 4;
+        } else {
+            if(var->data_type == 's'){
+                $$.text = strdup(var->data.str_val);
+                $$.type = 1;
+            } else if(var->data_type == 'c'){
+                char buffer[2];
+                buffer[0] = (char)var->data.val;
+                buffer[1] = '\0';
+                $$.text = strdup(buffer);
+                $$.type = 2;
+            } else {
+                char buffer[20];
+                sprintf(buffer, "%d", var->data.val);
+                $$.text = strdup(buffer);
+                $$.type = 3;
+            }
+        }
+        free($1);
+    }
+    | INTEGER {
+        char buffer[20];
+        sprintf(buffer, "%d", $1);
+        $$.text = strdup(buffer);
+        $$.type = 3;
+    }
+    | '(' expression ')' {
+        char buffer[20];
+        sprintf(buffer, "%d", $2);
+        $$.text = strdup(buffer);
+        $$.type = 3;
+    }
+    | display_arg '+' display_arg {
+        if(hasError) {
+            if($1.text) free($1.text);
+            if($3.text) free($3.text);
+            $$.text = NULL;
+            $$.type = 4;
+            YYERROR;
+        }
+        if($1.text == NULL || $3.text == NULL) {
+            $$.text = NULL;
+            $$.type = 4;
+            if($1.text) free($1.text);
+            if($3.text) free($3.text);
+            YYERROR;
+        } else if($1.type == 1 || $3.type == 1) {
+            // String concatenation: if either operand is a string
+            size_t len = strlen($1.text) + strlen($3.text) + 1;
+            $$.text = malloc(len);
+            if($$.text) {
+                strcpy($$.text, $1.text);
+                strcat($$.text, $3.text);
+                $$.type = 1;  // Result is a string
+            } else {
+                yyerror("Memory allocation failed on line %d", yylineno);
+                $$.text = NULL;
+                $$.type = 4;
+                hasError = 1;
+            }
+            free($1.text);
+            free($3.text);
+        } else {
+            // Numeric addition
+            int val1 = atoi($1.text);
+            int val2 = atoi($3.text);
+            char buffer[20];
+            sprintf(buffer, "%d", val1 + val2);
+            $$.text = strdup(buffer);
+            $$.type = 3;
+            free($1.text);
+            free($3.text);
+        }
+    }
+    | display_arg '-' display_arg {
+        if(hasError) {
+            if($1.text) free($1.text);
+            if($3.text) free($3.text);
+            $$.text = NULL;
+            $$.type = 4;
+            YYERROR;
+        }
+        if($1.text == NULL || $3.text == NULL) {
+            $$.text = NULL;
+            $$.type = 4;
+            if($1.text) free($1.text);
+            if($3.text) free($3.text);
+            YYERROR;
+        } else {
+            int val1 = atoi($1.text);
+            int val2 = atoi($3.text);
+            char buffer[20];
+            sprintf(buffer, "%d", val1 - val2);
+            $$.text = strdup(buffer);
+            $$.type = 3;
+            free($1.text);
+            free($3.text);
+        }
+    }
+    | display_arg '*' display_arg {
+        if(hasError) {
+            if($1.text) free($1.text);
+            if($3.text) free($3.text);
+            $$.text = NULL;
+            $$.type = 4;
+            YYERROR;
+        }
+        if($1.text == NULL || $3.text == NULL) {
+            $$.text = NULL;
+            $$.type = 4;
+            if($1.text) free($1.text);
+            if($3.text) free($3.text);
+            YYERROR;
+        } else {
+            int val1 = atoi($1.text);
+            int val2 = atoi($3.text);
+            char buffer[20];
+            sprintf(buffer, "%d", val1 * val2);
+            $$.text = strdup(buffer);
+            $$.type = 3;
+            free($1.text);
+            free($3.text);
+        }
+    }
+    | display_arg '/' display_arg {
+        if(hasError) {
+            if($1.text) free($1.text);
+            if($3.text) free($3.text);
+            $$.text = NULL;
+            $$.type = 4;
+            YYERROR;
+        }
+        if($1.text == NULL || $3.text == NULL) {
+            $$.text = NULL;
+            $$.type = 4;
+            if($1.text) free($1.text);
+            if($3.text) free($3.text);
+            YYERROR;
+        } else {
+            int val1 = atoi($1.text);
+            int val2 = atoi($3.text);
+            if(val2 == 0){
+                yyerror("Division by zero in display on line %d", yylineno);
+                hasError = 1;
+                $$.text = NULL;
+                free($1.text);
+                free($3.text);
+                YYERROR;
+            } else {
+                char buffer[20];
+                sprintf(buffer, "%d", val1 / val2);
+                $$.text = strdup(buffer);
+            }
+            $$.type = 3;
+            free($1.text);
+            free($3.text);
+        }
+    }
+    | '-' display_arg %prec UMINUS {
+        if($2.text == NULL) {
+            $$.text = NULL;
+            $$.type = 4;
+        } else {
+            int val = atoi($2.text);
+            char buffer[20];
+            sprintf(buffer, "%d", -val);
+            $$.text = strdup(buffer);
+            $$.type = 3;
+            free($2.text);
+        }
+    }
+    | '+' display_arg %prec UMINUS {
+        if($2.text == NULL) {
+            $$.text = NULL;
+            $$.type = 4;
+        } else {
+            $$ = $2;
+        }
+    }
     ;
 
 declaration_statement:
-    data_type declaration_list ";"
+    data_type declaration_list SEMI {
+        if(currentDataType) {
+            free(currentDataType);
+            currentDataType = NULL;
+        }
+        if(currentVarBeingDeclared) {
+            free(currentVarBeingDeclared);
+            currentVarBeingDeclared = NULL;
+        }
+    }
     ;
 
 assignment_statement:
-    assignment_list
+    assignment_list SEMI
     ;
 
-expression_statement:
-    expression
+data_type:
+    DATA_TYPE {
+        currentDataType = strdup($1);
+        $$ = currentDataType;
+    }
     ;
-
-
 
 declaration_list:
-    var_decl |
-    declaration_list "," var_decl
+    var_decl 
+    | declaration_list COMMA var_decl
     ;
 
 
 var_decl:
-    identifier |
-    declaration_list "," expression |
-    identifier "=" string_literal |
-    identifier "=" char_literal
+    VARIABLE {
+        // Initialize with default value: 0 for int/char, empty for string
+        if(strcmp(currentDataType, "string") == 0) {
+            createVariable(currentDataType, $1, 0, "");
+        } else {
+            createVariable(currentDataType, $1, 0, NULL);
+        }
+        if(hasError) YYABORT;
+        free($1);
+    }
+    | VARIABLE ASSIGNMENT {
+        // Set the variable being declared BEFORE evaluating expression
+        currentVarBeingDeclared = strdup($1);
+        
+        // Check if we're trying to assign to string type with expression
+        if(strcmp(currentDataType, "string") == 0) {
+            yyerror("String expressions are not allowed. Cannot assign expression to string variable '%s' on line %d", 
+                    currentVarBeingDeclared, yylineno);
+            hasError = 1;
+            free(currentVarBeingDeclared);
+            currentVarBeingDeclared = NULL;
+            free($1);
+            YYABORT;
+        }
+    } expression {
+        // Create variable with the expression value (only for non-string types)
+        if(!hasError) {
+            createVariable(currentDataType, $1, $4, NULL);
+        }
+        free(currentVarBeingDeclared);
+        currentVarBeingDeclared = NULL;
+        free($1);
+        if(hasError) YYABORT;
+    }
+    | VARIABLE ASSIGNMENT STRING '+' {
+        yyerror("String expressions are not allowed. Cannot use '+' operator with string variable '%s' on line %d", 
+                $1, yylineno);
+        hasError = 1;
+        free($1);
+        free($3);
+        YYABORT;
+    } STRING {
+        // This action will never be reached due to YYABORT above
+        free($6);
+    }
+    | VARIABLE ASSIGNMENT STRING {
+        if(strcmp(currentDataType, "string") != 0) {
+            yyerror("Cannot assign string value to %s variable '%s' on line %d", 
+                    currentDataType, $1, yylineno);
+            hasError = 1;
+            free($1);
+            free($3);
+            YYABORT;
+        } else {
+            createVariable(currentDataType, $1, 0, $3);
+            if(hasError) {
+                free($1);
+                free($3);
+                YYABORT;
+            }
+        }
+        free($1);
+        free($3);
+    }
+    | VARIABLE ASSIGNMENT CHARACTER {
+        if(strcmp(currentDataType, "string") == 0) {
+            yyerror("Cannot assign character value to string variable '%s' on line %d", 
+                    $1, yylineno);
+            hasError = 1;
+            free($1);
+            YYABORT;
+        } else {
+            createVariable(currentDataType, $1, (int)$3, NULL);
+            if(hasError) {
+                free($1);
+                YYABORT;
+            }
+        }
+        free($1);
+    }
+    | VARIABLE ASSIGNMENT VARIABLE {
+        // Handle string to string assignment (copy value from another string variable)
+        if(strcmp(currentDataType, "string") == 0) {
+            vars *sourceVar = getVariable($3);
+            if(!sourceVar) {
+                yyerror("Undefined variable '%s' on line %d", $3, yylineno);
+                hasError = 1;
+                free($1);
+                free($3);
+                YYABORT;
+            } else if(sourceVar->data_type != 's') {
+                yyerror("Cannot assign non-string variable to string variable '%s' on line %d", $1, yylineno);
+                hasError = 1;
+                free($1);
+                free($3);
+                YYABORT;
+            } else {
+                createVariable(currentDataType, $1, 0, sourceVar->data.str_val);
+                if(hasError) {
+                    free($1);
+                    free($3);
+                    YYABORT;
+                }
+            }
+        } else {
+            // For non-string types, treat as expression
+            currentVarBeingDeclared = strdup($1);
+            int val = getVariableValue($3);
+            if(hasError) {
+                free(currentVarBeingDeclared);
+                currentVarBeingDeclared = NULL;
+                free($1);
+                free($3);
+                YYABORT;
+            }
+            createVariable(currentDataType, $1, val, NULL);
+            free(currentVarBeingDeclared);
+            currentVarBeingDeclared = NULL;
+            if(hasError) {
+                free($1);
+                free($3);
+                YYABORT;
+            }
+        }
+        free($1);
+        free($3);
+    }
     ;
 
 assignment_list:
-    assignment |
-    assignment_list "," assignment
+    assignment 
+    | assignment_list COMMA assignment
     ;
 
 assignment:
-    identifier "=" expression |
-    identifier "=" string_literal |
-    identifier "=" char_literal
+    VARIABLE ASSIGNMENT expression {
+        vars *var = getVariable($1);
+        if(var && var->data_type == 's') {
+            yyerror("String expressions are not allowed. Cannot assign expression to string variable '%s' on line %d", $1, yylineno);
+            hasError = 1;
+        } else {
+            variableReAssignment($1, $3, NULL);
+        }
+        free($1);
+    }
+    | VARIABLE ASSIGNMENT STRING '+' {
+        vars *var = getVariable($1);
+        if(!var) {
+            yyerror("Undefined variable '%s' on line %d", $1, yylineno);
+        } else {
+            yyerror("String expressions are not allowed. Cannot use '+' operator with string variable '%s' on line %d", 
+                    $1, yylineno);
+        }
+        hasError = 1;
+        free($1);
+        free($3);
+        YYABORT;
+    } STRING {
+        // This action will never be reached due to YYABORT above
+        free($6);
+    }
+    | VARIABLE ASSIGNMENT STRING {
+        vars *var = getVariable($1);
+        if(!var) {
+            yyerror("Undefined variable '%s' on line %d", $1, yylineno);
+            hasError = 1;
+            free($1);
+            free($3);
+            YYABORT;
+        } else if(var->data_type != 's') {
+            yyerror("Cannot assign string value to non-string variable '%s' on line %d", $1, yylineno);
+            hasError = 1;
+            free($1);
+            free($3);
+            YYABORT;
+        } else {
+            variableReAssignment($1, 0, $3);
+        }
+        free($1);
+        free($3);
+        if(hasError) YYABORT;
+    }
+    | VARIABLE ASSIGNMENT CHARACTER {
+        vars *var = getVariable($1);
+        if(var && var->data_type == 's') {
+            yyerror("Cannot assign character value to string variable '%s' on line %d", $1, yylineno);
+            hasError = 1;
+        } else {
+            variableReAssignment($1, (int)$3, NULL);
+        }
+        free($1);
+    }
+    | VARIABLE ASSIGNMENT VARIABLE {
+        vars *targetVar = getVariable($1);
+        vars *sourceVar = getVariable($3);
+        
+        if(!targetVar) {
+            yyerror("Undefined variable '%s' on line %d", $1, yylineno);
+            hasError = 1;
+        } else if(!sourceVar) {
+            yyerror("Undefined variable '%s' on line %d", $3, yylineno);
+            hasError = 1;
+        } else if(targetVar->data_type == 's' && sourceVar->data_type == 's') {
+            // String to string assignment is allowed
+            variableReAssignment($1, 0, sourceVar->data.str_val);
+        } else if(targetVar->data_type == 's' && sourceVar->data_type != 's') {
+            yyerror("Cannot assign non-string variable to string variable '%s' on line %d", $1, yylineno);
+            hasError = 1;
+        } else if(targetVar->data_type != 's' && sourceVar->data_type == 's') {
+            yyerror("Cannot assign string variable to non-string variable '%s' on line %d", $1, yylineno);
+            hasError = 1;
+        } else {
+            // Non-string to non-string
+            variableReAssignment($1, sourceVar->data.val, NULL);
+        }
+        free($1);
+        free($3);
+    }
     ;
 
 expression:
-    term |
-    expression "+" term |
-    expression "-" term 
-    ;
-
-term:
-    factor | term "+" factor | term "/" factor 
-    ;
-
-factor:
-    "-" factor 
-    ;
-
-primary:
-    Number | char_literal | identifier | "(" expression ")" 
-    ;
-
-number:
-    digit number_tail
-    ;
-
-number_tail:
-    digit number_tail | 
-    ;
-
-digit:
-    DIGIT
-    ;
-
-
-data_type:
-    int | char | string
-    ;
-
-identifier:
-    letter id_tail 
-    ;
-
-id_tail:
-    letter id_tail |
-    digit id_tail |
-    "_" id_tail |
-    ;
-
-letter:
-    CHARACTER
-    ;
-
-char_literal:
-    "'"character"'"
-    ;
-
-character:
-    letter | digit | special_char 
-    ;
-
-string_literal:
-    "'"string_body"'"
-    ;
-string_body:
-    string_char string_body | 
-    ;
-
-string_char:
-    letter | digit | special_char | " "
-    ;
-
-special_char:
-    "!" | "@" | "#" | "$" | "%" | "^" | "&" | "*"| "(" | ")" | "-" | "_" | "+" | "=" | "{" | "}"| "[" | "]" | "|" | "" | ":" | ";" | "<" | ">"| "," | "." | "?" | "/" | "~" | "`" | " "
+    INTEGER { 
+        $$ = $1; 
+    }
+    | CHARACTER { 
+        $$ = (int)$1; 
+    }
+    | VARIABLE { 
+        // Check if this variable is being declared right now
+        if(currentVarBeingDeclared && strcmp($1, currentVarBeingDeclared) == 0) {
+            yyerror("Variable '%s' used in its own initialization on line %d", 
+                    $1, yylineno);
+            hasError = 1;
+            $$ = 0;
+        } else {
+            $$ = getVariableValue($1);
+        }
+        free($1);
+    }
+    | '(' expression ')' { 
+        $$ = $2; 
+    }
+    | expression '+' expression { 
+        $$ = $1 + $3; 
+    }
+    | expression '-' expression { 
+        $$ = $1 - $3; 
+    }
+    | expression '*' expression { 
+        $$ = $1 * $3; 
+    }
+    | expression '/' expression { 
+        if($3 == 0){
+            yyerror("Division by zero on line %d", yylineno);
+            hasError = 1;
+            $$ = 0;
+        } else {
+            $$ = $1 / $3;
+        }
+    }
+    | '-' expression %prec UMINUS { 
+        $$ = -$2; 
+    }
+    | '+' expression %prec UMINUS { 
+        $$ = $2; 
+    }
     ;
 
 %%
@@ -246,19 +639,20 @@ special_char:
 int main(void) {
     printf("Welcome to my Custom sPyC!\n");
     int result = yyparse();
-    if (headVars) printVariableTable(); // Display all Variables.
-    if (headErrList) printErrorTable(); // Display all erros if exist.
-    if (headErrList) cleanupErrorTable(); // Free memories alocated on error list.
-    if (headVars) cleanupVariableTable();  // Free memories of all variable list.
+    if (headVars) printVariableTable();
+    if (headErrList) printErrorTable();
+    if (headErrList) cleanupErrorTable();
+    if (headVars) cleanupVariableTable();
     return result;
 }
 
 
 /*---------------------------------Error handling---------------------------------------------------*/
 void yyerror(const char *fmt, ...) {
-    // Filter out Bison's default "syntax error"
     if (fmt && strcmp(fmt, "syntax error") == 0)
         return;
+
+    hasError = 1;
 
     va_list args;
     va_start(args, fmt);
@@ -287,8 +681,6 @@ void yyerror(const char *fmt, ...) {
         tailErrList->next = currentError;
         tailErrList = currentError; 
     }
-
-    
 }
 
 void printErrorTable() {
@@ -323,16 +715,20 @@ int getVariableValue(char *variableName){
     vars *existing = getVariable(variableName);
     
     if(!existing){
+        // Variable doesn't exist at all - this is an error
         yyerror("Undefined variable %s, on line %d.", variableName, yylineno);
-        return 0;  // Return default on error
+        hasError = 1;
+        return 0;
     }
     
     if(existing->data_type == 's'){
         yyerror("Cannot perform arithmetic operations on variable %s: string literals, on line %d.", variableName, yylineno);
+        hasError = 1;
         return 0;
     }
     
-    return existing->data.val;  // return the value
+    // Return the value (will be 0 if uninitialized, which is correct)
+    return existing->data.val;
 }
 
 void cleanupVariableTable() {
@@ -349,69 +745,65 @@ void cleanupVariableTable() {
     headVars = tailVars = NULL;
 }
 
-// get the type name for error handling in variable
 const char* typeName(char dt) {
     return (dt=='i')?"int":(dt=='c')?"char":"string";
 }
 
 
-// Returns the pointer to the variable if found, NULL otherwise
 vars* getVariable(char* variable) {
     vars *current = headVars;
     while (current) {
         if (strcmp(current->id, variable) == 0) {
-            return current; // found
+            return current;
         }
         current = current->next;
     }
-    return NULL; // not found
+    return NULL;
 }
 
 void createVariable(char *DTYPE, char* variable, int val, char *str_val) {  
-    // Validate variable name first
     if(isdigit(variable[0])){
-        yyerror("Variable %s can't start in number, in line %d.", variable, yylineno);
+        yyerror("Variable %s can't start in INTEGER, in line %d.", variable, yylineno);
+        hasError = 1;
         return;
     }
 
     vars *existing = getVariable(variable);
 
-    // Declaration with type keyword when variable exists
     if (existing && DTYPE && strlen(DTYPE) > 0) {
         yyerror("Variable '%s' is already declared with type '%s' on line %d", 
                 variable, typeName(existing->data_type), yylineno);
+        hasError = 1;
         return;
     }
 
-    // Reassignment case (variable exists, no type keyword)
     if (existing && (!DTYPE || strlen(DTYPE) == 0)) {
         variableReAssignment(variable, val, str_val);
         return;
     }
 
-    // Assignment without type keyword when variable doesn't exist
     if (!existing && (!DTYPE || strlen(DTYPE) == 0)) {
         yyerror("Undefined variable '%s' on line %d", variable, yylineno);
+        hasError = 1;
         return;
     }
 
-    // DTYPE is now guaranteed to be non-NULL and non-empty
-
-    // Type/value mismatch checks
     if (strcmp(DTYPE, "int") == 0 && str_val != NULL) {
         yyerror("Cannot assign string value to int variable '%s' on line %d", variable, yylineno);
+        hasError = 1;
         return;
     }
     if (strcmp(DTYPE, "char") == 0 && str_val != NULL) {
         yyerror("Cannot assign string value to char variable '%s' on line %d", variable, yylineno);
+        hasError = 1;
         return;
     }
     if (strcmp(DTYPE, "string") == 0 && str_val == NULL) {
         yyerror("Cannot assign non-string value to string variable '%s' on line %d", variable, yylineno);
+        hasError = 1;
         return;
     }
 
-    // Create the variable
     vars *newVar = calloc(1, sizeof(vars));
     if (!newVar) {
         fprintf(stderr, "Failed to allocate memory for variable '%s'\n", variable);
@@ -426,7 +818,12 @@ void createVariable(char *DTYPE, char* variable, int val, char *str_val) {
         newVar->data.val = val;
     } else if (strcmp(DTYPE, "string") == 0) {
         newVar->data_type = 's';
-        newVar->data.str_val = str_val ? strdup(str_val) : strdup("");
+        // For strings, use provided value or empty string
+        if(str_val != NULL) {
+            newVar->data.str_val = strdup(str_val);
+        } else {
+            newVar->data.str_val = strdup("");
+        }
         if (!newVar->data.str_val) {
             fprintf(stderr, "Failed to allocate memory for string value\n");
             free(newVar);
@@ -464,34 +861,35 @@ void variableReAssignment(char* variable, int val, char *str_val){
 
     if(!existing){
         yyerror("Undefined variable %s on line %d.", variable, yylineno);
+        hasError = 1;
         return;
     }
 
-    // Type checking
     if (existing->data_type == 'i' && str_val != NULL) {
         yyerror("Cannot assign string value to int variable '%s' on line %d", variable, yylineno);
+        hasError = 1;
         return;
     }
     if (existing->data_type == 'c' && str_val != NULL) {
         yyerror("Cannot assign string value to char variable '%s' on line %d", variable, yylineno);
+        hasError = 1;
         return;
     }
     if (existing->data_type == 's' && str_val == NULL) {
         yyerror("Cannot assign non-string value to string variable '%s' on line %d", variable, yylineno);
+        hasError = 1;
         return;
     }
 
-    // Assign value
     if(existing->data_type == 'i' || existing->data_type == 'c'){
         existing->data.val = val;
     } else {
-        // Allocate new string first (safer approach)
         char *new_str = strdup(str_val ? str_val : "");
         if(!new_str){
             yyerror("Failed to allocate memory for str value on line %d", yylineno);
-            return;  // Old value preserved
+            hasError = 1;
+            return;
         }
-        // Only free old string after successful allocation
         free(existing->data.str_val);
         existing->data.str_val = new_str;
     }
