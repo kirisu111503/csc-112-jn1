@@ -1,4 +1,1 @@
-int b;
-int a
-int c;
-int d
+int x = 1 - (-2)

@@ -77,6 +77,7 @@ void printVariableTable();
 %token ASSIGNMENT
 %token DISPLAY
 %token COMMA
+%token DIGIT
 %token SEMI
 %token <str> STRING 
 %token <num> INTEGER

@@ -1,13 +1,12 @@
 .data
-d: .space 8
-c: .space 8
-a: .space 8
-b: .space 8
+x: .space 8
 
 .text
 main:
-
-
+    daddiu r8, r0, 1
+    daddiu r9, r0, -2
+    dsubu r8, r8, r9
+    sd r8, x(r0)
 
 
     syscall 0
