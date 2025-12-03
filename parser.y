@@ -349,14 +349,15 @@ declaration_statement:
     ;
 
 assignment_statement:
-    assignment_list
+    assignment_list SEMI
     ;
 
-expression_statement:
-    expression
+data_type:
+    DATA_TYPE {
+        currentDataType = strdup($1);
+        $$ = currentDataType;
+    }
     ;
-
-
 
 declaration_list:
     var_decl 
@@ -586,75 +587,51 @@ assignment:
     ;
 
 expression:
-    term |
-    expression "+" term |
-    expression "-" term 
-    ;
-
-term:
-    factor | term "+" factor | term "/" factor 
-    ;
-
-factor:
-    "-" factor 
-    ;
-
-primary:
-    Number | char_literal | identifier | "(" expression ")" 
-    ;
-
-number:
-    digit number_tail
-    ;
-
-number_tail:
-    digit number_tail | 
-    ;
-
-digit:
-    DIGIT
-    ;
-
-
-data_type:
-    int | char | string
-    ;
-
-identifier:
-    letter id_tail 
-    ;
-
-id_tail:
-    letter id_tail |
-    digit id_tail |
-    "_" id_tail |
-    ;
-
-letter:
-    CHARACTER
-    ;
-
-char_literal:
-    "'"character"'"
-    ;
-
-character:
-    letter | digit | special_char 
-    ;
-
-string_literal:
-    "'"string_body"'"
-    ;
-string_body:
-    string_char string_body | 
-    ;
-
-string_char:
-    letter | digit | special_char | " "
-    ;
-
-special_char:
-    "!" | "@" | "#" | "$" | "%" | "^" | "&" | "*"| "(" | ")" | "-" | "_" | "+" | "=" | "{" | "}"| "[" | "]" | "|" | "" | ":" | ";" | "<" | ">"| "," | "." | "?" | "/" | "~" | "`" | " "
+    INTEGER { 
+        $$ = $1; 
+    }
+    | CHARACTER { 
+        $$ = (int)$1; 
+    }
+    | VARIABLE { 
+        // Check if this variable is being declared right now
+        if(currentVarBeingDeclared && strcmp($1, currentVarBeingDeclared) == 0) {
+            yyerror("Variable '%s' used in its own initialization on line %d", 
+                    $1, yylineno);
+            hasError = 1;
+            $$ = 0;
+        } else {
+            $$ = getVariableValue($1);
+        }
+        free($1);
+    }
+    | '(' expression ')' { 
+        $$ = $2; 
+    }
+    | expression '+' expression { 
+        $$ = $1 + $3; 
+    }
+    | expression '-' expression { 
+        $$ = $1 - $3; 
+    }
+    | expression '*' expression { 
+        $$ = $1 * $3; 
+    }
+    | expression '/' expression { 
+        if($3 == 0){
+            yyerror("Division by zero on line %d", yylineno);
+            hasError = 1;
+            $$ = 0;
+        } else {
+            $$ = $1 / $3;
+        }
+    }
+    | '-' expression %prec UMINUS { 
+        $$ = -$2; 
+    }
+    | '+' expression %prec UMINUS { 
+        $$ = $2; 
+    }
     ;
 
 %%
