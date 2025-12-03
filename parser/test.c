@@ -93,6 +93,7 @@ history *history_head = NULL;
 history *history_tail = NULL;
 int next_register = 1;      // start from r1 (r0 is reserved)
 int next_temp_register = 8; // start using r8 for temp calculations
+int tokCount = 0;
 
 // --- Function Prototypes for AST ---
 AstNode *create_number_node(int value);
@@ -405,6 +406,7 @@ AstNode *parse_atom()
     {
         g_expr_ptr++;
         while (isdigit(*g_expr_ptr))
+            tokCount++;
             g_expr_ptr++;
         char num_str[32];
         strncpy(num_str, start, g_expr_ptr - start);
@@ -415,6 +417,8 @@ AstNode *parse_atom()
     // atom: Char (e.g., 'A')
     if (*start == '\'')
     {
+        tokCount++;
+
         g_expr_ptr++;
         int char_val = *g_expr_ptr;
         g_expr_ptr++;
@@ -425,6 +429,7 @@ AstNode *parse_atom()
     // atom: Variable (e.g., y)
     if (isalpha(*start) || *start == '_')
     {
+        tokCount++;
         g_expr_ptr++;
         while (isalnum(*g_expr_ptr) || *g_expr_ptr == '_')
             g_expr_ptr++;
@@ -443,13 +448,17 @@ AstNode *parse_atom()
     // atom: Parentheses (e.g., (5 + y))
     if (*start == '(')
     {
+        tokCount++;
         g_expr_ptr++;                       // Consume '('
         AstNode *node = parse_expression(); // Recursively call the top-level parser
         if (*g_expr_ptr != ')')
         {
             add_error(g_line_num, ERROR_SYNTAX, "Missing ')'");
+        } else {
+            tokCount++;
+            g_expr_ptr++; // Consume ')'
+
         }
-        g_expr_ptr++; // Consume ')'
         return node;
     }
 
@@ -470,6 +479,7 @@ AstNode *parse_term()
 
         if (op == '*' || op == '/')
         {
+            tokCount++;
             g_expr_ptr++;
             AstNode *right_node = parse_atom();
             left_node = create_binary_op_node(op, left_node, right_node);
@@ -495,6 +505,7 @@ AstNode *parse_expression()
 
         if (op == '+' || op == '-')
         {
+            tokCount++;
             g_expr_ptr++;
             AstNode *right_node = parse_term();
             left_node = create_binary_op_node(op, left_node, right_node);
@@ -652,7 +663,7 @@ void print_symbol_table()
     {
         printf("%-15s ", current->id);
         printf("%-10s ", current->data_type == TYPE_INT ? "int" : "char");
-        printf("$%-9d ", current->reg_num);
+        printf("r%-9d ", current->reg_num);
 
         printf("\n");
         current = current->next;
@@ -1244,7 +1255,7 @@ void convert_mips64_to_binhex(char *filename)
         instr_count++;
     }
     printf("+----+------------------------+-------------------------------------------+----------+\n");
-
+    printf("\nTOKEN COUNT: %d\n", tokCount);
     fclose(file);
 }
 
@@ -1333,6 +1344,7 @@ int main()
             // === CASE 1: Declaration (starts with int or char) ===
             if (is_declaration(temp))
             {
+                tokCount += 2;
                 // Check if there's actually a variable name after the data type
                 char *temp_copy = strdup(temp);
                 char *data_type_str = extract_data_type(temp_copy);
@@ -1382,6 +1394,8 @@ int main()
             // === CASE 2: Assignment (has = and left side is identifier) ===
             else if (strchr(temp, '=') != NULL)
             {
+                tokCount++;  // variable
+                tokCount++;  // =
                 char *eq = strchr(temp, '=');
                 char lhs[256] = {0};
                 strncpy(lhs, temp, eq - temp);
