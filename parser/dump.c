@@ -18,6 +18,14 @@
 #define ERROR_UNDECLARED "Undeclared variable"
 
 // --- Abstract Syntax Tree (AST) Nodes ---
+// Explanation of AST: 
+// The Abstract Syntax Tree (AST) represents the structure of expressions in a tree form.
+// Each node in the tree can be:
+// - A number (leaf node with a constant value)
+// - A variable (leaf node with a variable name)
+// - A binary operation (internal node with an operator and left/right child subtrees)
+// This tree captures the precedence and associativity of operations (e.g., PEMDAS) for later code generation or evaluation.
+// The AST is built during parsing and used to generate MIPS assembly code recursively.
 typedef enum
 {
     NODE_NUMBER,
@@ -135,6 +143,8 @@ AstNode *parse_atom();       // Handles numbers, vars, (and parentheses)
 // --- AST Helper Functions ---
 
 // create a simple number node
+// Explanation: Allocates a new AST node for a constant integer value.
+// This is a leaf node in the AST tree.
 AstNode *create_number_node(int value)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -144,6 +154,8 @@ AstNode *create_number_node(int value)
 }
 
 // create node for a variable name
+// Explanation: Allocates a new AST node for a variable reference.
+// Stores the variable name as a string. This is also a leaf node.
 AstNode *create_variable_node(char *var_name)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -153,6 +165,9 @@ AstNode *create_variable_node(char *var_name)
 }
 
 // create binary operation node (the "blueprint")
+// Explanation: Allocates a new AST node for a binary operation (e.g., +, -, *, /).
+// Links left and right subtrees (which can be any AST nodes) and stores the operator.
+// This forms internal nodes in the tree, representing expressions like (left op right).
 AstNode *create_binary_op_node(char op, AstNode *left, AstNode *right)
 {
     AstNode *node = (AstNode *)malloc(sizeof(AstNode));
@@ -164,6 +179,10 @@ AstNode *create_binary_op_node(char op, AstNode *left, AstNode *right)
 }
 
 // recursively frees all memory associated with an AST
+// Explanation: Traverses the AST tree recursively to free all nodes.
+// For binary ops, frees left and right subtrees first.
+// For variables, frees the name string.
+// Ensures no memory leaks after using the AST.
 void free_ast(AstNode *node)
 {
     if (!node)
@@ -180,6 +199,8 @@ void free_ast(AstNode *node)
     }
     free(node);
 }
+
+// --- End of AST Helper Functions ---
 
 // find a variable in the symbol table
 vars *find_variable(const char *id)
@@ -316,7 +337,6 @@ char *extract_variable_name(const char *declaration)
     return name;
 }
 
-// extract the data type from a declaration string
 char *extract_data_type(const char *declaration)
 {
     if (declaration == NULL)
@@ -338,7 +358,6 @@ char *extract_data_type(const char *declaration)
     return type;
 }
 
-// extract the value part from a declaration or assignment string
 char *extract_value(const char *declaration)
 {
     if (declaration == NULL)
@@ -369,7 +388,6 @@ char *extract_value(const char *declaration)
     return value;
 }
 
-// check if line is a var declaration
 int is_declaration(const char *line)
 {
     if (line == NULL)
@@ -390,13 +408,23 @@ int is_declaration(const char *line)
     return result;
 }
 
-// --- PEMDAS-COMPLIANT PARSER ---
+// --- PEMDAS-COMPLIANT PARSER (NOW BUILDS AN AST) ---
 
-// gobal helper for the parser
+// Global helper for the parser
 static const char *g_expr_ptr; // points to the current character in the expression
 static int g_line_num;         // current line number for error reporting
 
 // parses an "atom": number, variable, or (parentheses)
+// Explanation of parse_atom:
+// This is the base parser for the smallest units (atoms) in an expression.
+// - Skips whitespace.
+// - Handles positive integers (digits only; negatives are handled by unary minus in parse_unary).
+// - Handles character literals like 'A'.
+// - Handles variables (identifiers starting with letter or underscore).
+// - Handles parenthesized subexpressions by recursing into parse_expression.
+// For each atom type, it increments tokCount (token counter) once per token.
+// Advances g_expr_ptr to consume the input.
+// If invalid, adds a syntax error and returns a dummy node.
 AstNode *parse_atom()
 {
     while (isspace(*g_expr_ptr))
@@ -425,8 +453,7 @@ AstNode *parse_atom()
         g_expr_ptr++;
         int char_val = *g_expr_ptr;
         g_expr_ptr++;
-        if (*g_expr_ptr == '\'')
-            g_expr_ptr++; // Skip closing '
+        if (*g_expr_ptr == '\'') g_expr_ptr++; // Skip closing '
         return create_number_node(char_val);
     }
 
@@ -472,6 +499,10 @@ AstNode *parse_atom()
 }
 
 // handles unary + and -
+// Explanation: Parses unary operators (+ or -) with highest precedence.
+// Recurses to handle chained unaries (e.g., --x becomes 0 - (0 - x)).
+// Treats unary minus as binary (0 - operand) to reuse AST structure.
+// Increments tokCount for each unary operator.
 AstNode *parse_unary()
 {
     while (isspace(*g_expr_ptr))
@@ -488,6 +519,10 @@ AstNode *parse_unary()
 }
 
 // handles * and / (high precedence)
+// Explanation: Parses multiplicative expressions.
+// Starts with a unary factor, then repeatedly adds * or / operations (left-associative).
+// Builds AST nodes for each operation.
+// Increments tokCount for each operator.
 AstNode *parse_term()
 {
     AstNode *left_node = parse_unary();
@@ -514,6 +549,10 @@ AstNode *parse_term()
 }
 
 // handles + and - (lower precedence)
+// Explanation: Parses additive expressions.
+// Starts with a term (multiplication/division), then adds + or - operations.
+// Builds the AST with lower precedence than terms.
+// Increments tokCount for each operator.
 AstNode *parse_expression()
 {
     AstNode *left_node = parse_term();
@@ -540,6 +579,9 @@ AstNode *parse_expression()
 }
 
 // main entry point for the expression parser
+// Explanation: Prepares the input string (trims whitespace), sets globals, calls parse_expression.
+// Checks for leftover input (syntax error if any).
+// Frees temporary string.
 AstNode *parse_expression_to_ast(const char *expression_str, int line_num)
 {
     if (expression_str == NULL)
@@ -571,7 +613,7 @@ AstNode *parse_expression_to_ast(const char *expression_str, int line_num)
     return tree;
 }
 
-// ---  process a variable declaration line ---
+// ---  process_declaration ---
 void process_declaration(const char *declaration, int line_num)
 {
     if (declaration == NULL)
@@ -636,7 +678,7 @@ void process_declaration(const char *declaration, int line_num)
     free(data_type_str);
 }
 
-// --- process a variable assignment line ---
+// --- process_assignment ---
 void process_assignment(const char *assignment, int line_num)
 {
     if (assignment == NULL)
@@ -673,7 +715,7 @@ void process_assignment(const char *assignment, int line_num)
         free(value);
 }
 
-// PRINT symbol table content
+// PRINT FUnctIONS
 void print_symbol_table()
 {
     if (symbol_table == NULL)
@@ -697,7 +739,6 @@ void print_symbol_table()
     printf("\n");
 }
 
-// prints error lists
 void print_errors()
 {
     if (error_list_head == NULL)
@@ -722,7 +763,7 @@ void print_errors()
     printf("\n");
 }
 
-// helper to print the AST for debugging
+// Helper to print the AST for debugging
 void print_history_ast(AstNode *node)
 {
     if (!node)
@@ -748,7 +789,6 @@ void print_history_ast(AstNode *node)
     }
 }
 
-// prints the operation history with ast
 void print_history()
 {
     if (history_head == NULL)
@@ -776,22 +816,28 @@ void print_history()
 // ---  generate_mips64 ---
 
 // recursive function walks the AST and generates MIPS code THEN returns the temporary register number that holds the final result.
+// Explanation: Recursively traverses the AST to generate MIPS instructions.
+// - For numbers: Loads immediate into a temp register.
+// - For variables: Loads from memory into a temp register.
+// - For binary ops: Generates code for left and right, performs op, reuses left register.
+// Returns the register holding the result for parent nodes.
+// Manages temp registers to avoid conflicts.
 int generate_mips_for_ast(FILE *output_file, AstNode *node)
 {
     if (!node)
-        return 0; // should not happen (error)
+        return 0; // Should not happen (error)
 
     int reg_num;
     switch (node->type)
     {
     case NODE_NUMBER:
-        // load an immediate value into a new temporary register
+        // Load an immediate value into a new temporary register
         reg_num = next_temp_register++;
         fprintf(output_file, "    daddiu r%d, r0, %d\n", reg_num, node->value);
         return reg_num;
 
     case NODE_VARIABLE:
-        // load the variable's value from memory into a new temporary register
+        // Load the variable's value from memory into a new temporary register
         reg_num = next_temp_register++;
         vars *var = find_variable(node->var_name);
         if (var->data_type == TYPE_INT)
@@ -845,7 +891,6 @@ int generate_mips_for_ast(FILE *output_file, AstNode *node)
     return 0;
 }
 
-// generate complete mips64 assembly code from history
 void generate_mips64()
 {
     FILE *output_file = fopen("output.txt", "w");
@@ -896,14 +941,14 @@ void generate_mips64()
             continue;
         }
 
-        // only generate code if there is an expression
+        // Only generate code if there is an expression
         if (current->expression_tree)
         {
-            // reset the temporary register counter for each new statement
+            // Reset the temporary register counter for each new statement
             next_temp_register = 8;
 
-            // generate all the MIPS for the expression
-            // the final result will be in the register returned by this call
+            // Generate all the MIPS for the expression
+            // The final result will be in the register returned by this call
             int final_result_reg = generate_mips_for_ast(output_file, current->expression_tree);
 
             // store final result from the temp reg into the variable's memory
@@ -930,7 +975,7 @@ void generate_mips64()
     fclose(output_file);
 }
 
-// free symbol table memory
+// Free symbol table memory
 void free_symbol_table()
 {
     vars *current = symbol_table;
@@ -947,7 +992,7 @@ void free_symbol_table()
     symbol_table = NULL;
 }
 
-// free error list memory
+// Free error list memory
 void free_error_list()
 {
     errorList *current = error_list_head;
@@ -968,7 +1013,7 @@ void free_error_list()
     error_list_head = NULL;
 }
 
-// free history memory
+// Free history memory
 void free_history()
 {
     history *current = history_head;
@@ -1004,7 +1049,6 @@ int get_register_number(char *reg)
     return -1;
 }
 
-// prints binary fields of an instruction based format
 void print_binary_fields(uint32_t binary, const char *format_type)
 {
     char output[100];
@@ -1077,7 +1121,6 @@ void print_binary_fields(uint32_t binary, const char *format_type)
     printf("%s", output);
 }
 
-// convert mips to binary and hex
 void convert_mips64_to_binhex(char *filename)
 {
     FILE *file = fopen(filename, "r");
@@ -1316,20 +1359,20 @@ int main()
 
     while (fgets(line, sizeof(line), file) != NULL)
     {
-        // remove newline
+        // Remove newline
         line[strcspn(line, "\n")] = 0;
 
         char *input = line;
 
         while (*input)
         {
-            // skip whitespace
+            // Skip whitespace
             while (isspace(*input))
                 input++;
             if (*input == '\0')
                 break;
 
-            // find next semicolon
+            // Find next semicolon
             char *semicolon = strchr(input, ';');
             char stmt[1024];
 
@@ -1349,12 +1392,12 @@ int main()
                 input = semicolon + 1;
             }
 
-            // trim trailing whitespace
+            // Trim trailing whitespace
             char *end = stmt + strlen(stmt) - 1;
             while (end >= stmt && isspace(*end))
                 *end-- = '\0';
 
-            // skip empty statements
+            // Skip empty statements
             char *start = stmt;
             while (isspace(*start))
                 start++;
@@ -1364,16 +1407,7 @@ int main()
             char temp[1024];
             strcpy(temp, stmt);
 
-            // === ADD THIS CHECK HERE ===
-            // Check if this individual statement has a semicolon
-            if (strchr(temp, ';') == NULL)
-            {
-                add_error(line_num, ERROR_SYNTAX, "Missing semicolon");
-                continue; // Skip this statement
-            }
-            // === END OF CHECK ===
-
-            // remove semicolon and trim for checking if statement is empty
+            // Remove semicolon and trim for checking if statement is empty
             char check_empty[1024];
             strcpy(check_empty, temp);
             char *semi = strchr(check_empty, ';');
@@ -1388,36 +1422,33 @@ int main()
             while (check_end > check_ptr && isspace(*check_end))
                 *check_end-- = '\0';
 
-            // skip completely empty statements (just semicolons)
+            // Skip completely empty statements (just semicolons)
             if (*check_ptr == '\0')
-            {
-                tokCount++; // Count the semicolon token
                 continue;
-            }
 
             // === CASE 1: Declaration (starts with int or char) ===
             if (is_declaration(temp))
             {
                 // tokCount += 2; removed
-                // check if there's actually a variable name after the data type
+                // Check if there's actually a variable name after the data type
                 char *temp_copy = strdup(temp);
                 char *data_type_str = extract_data_type(temp_copy);
 
                 if (data_type_str)
                 {
-                    // check if there's anything after the data type
+                    // Check if there's anything after the data type
                     char *after_type = temp_copy + strlen(data_type_str);
                     while (isspace(*after_type))
                         after_type++;
 
-                    // remove semicolons and whitespace to check if empty
+                    // Remove semicolons and whitespace to check if empty
                     char check_var[1024];
                     strcpy(check_var, after_type);
                     char *sc = strchr(check_var, ';');
                     if (sc)
                         *sc = '\0';
 
-                    // trim
+                    // Trim
                     char *cv_ptr = check_var;
                     while (isspace(*cv_ptr))
                         cv_ptr++;
@@ -1425,7 +1456,7 @@ int main()
                     while (cv_end > cv_ptr && isspace(*cv_end))
                         *cv_end-- = '\0';
 
-                    // if nothing after data type, it's an error
+                    // If nothing after data type, it's an error
                     if (*cv_ptr == '\0')
                     {
                         add_error(line_num, ERROR_SYNTAX, "Data type without variable name");
@@ -1454,7 +1485,7 @@ int main()
                 strncpy(lhs, temp, eq - temp);
                 lhs[eq - temp] = '\0';
 
-                // trim lhs
+                // Trim lhs
                 char *p = lhs;
                 while (isspace(*p))
                     p++;
@@ -1462,27 +1493,23 @@ int main()
                 while (q > p && isspace(*q))
                     *q-- = '\0';
 
-                // if left side is a valid identifier then it is an assignment line
+                // If left side is a valid identifier → assignment
                 if (isalpha(p[0]) || p[0] == '_')
                 {
                     process_assignment(temp, line_num);
                 }
             }
-            //  === CASE 3: Pure expression (no =) then evaluate and store in temp ===
-            // === CASE 3: Pure expression (no =) then evaluate and store in temp ===
+            // === CASE 3: Pure expression (no =) → evaluate and store in temp ===
             else
             {
-                // remove semicolon before parsing
+                // Remove semicolon before parsing
                 char expr_str[1024];
                 strcpy(expr_str, temp);
                 char *semicolon_pos = strchr(expr_str, ';');
                 if (semicolon_pos)
-                {
-                    tokCount++; // Count the semicolon
                     *semicolon_pos = '\0';
-                }
 
-                // trim any trailing whitespace
+                // Trim any trailing whitespace
                 char *trim_end = expr_str + strlen(expr_str) - 1;
                 while (trim_end > expr_str && isspace(*trim_end))
                 {
@@ -1490,32 +1517,24 @@ int main()
                     trim_end--;
                 }
 
-                // Skip if expression is empty after removing semicolon
-                char *expr_start = expr_str;
-                while (isspace(*expr_start))
-                    expr_start++;
-
-                if (*expr_start == '\0')
-                    continue;
-
-                // parse the expression to build AST
-                AstNode *expr_tree = parse_expression_to_ast(expr_start, line_num);
+                // Parse the expression to build AST
+                AstNode *expr_tree = parse_expression_to_ast(expr_str, line_num);
 
                 if (expr_tree != NULL)
                 {
-                    // create a temporary variable name for the result
+                    // Create a temporary variable name for the result
                     char temp_var[32];
                     sprintf(temp_var, "__temp_%d", line_num);
 
-                    // add temporary variable to symbol table
+                    // Add temporary variable to symbol table
                     if (add_variable(temp_var, TYPE_INT, line_num))
                     {
-                        // add to history as a special "EXPRESSION" type assignment
+                        // Add to history as a special "EXPRESSION" type assignment
                         add_history_entry(line_num, OP_ASSIGNMENT, temp_var, TYPE_INT, expr_tree, temp);
 
-                        // printf("  -> Pure expression evaluated: ");
-                        // print_history_ast(expr_tree);
-                        // printf(" (stored in %s)\n", temp_var);
+                        printf("  -> Pure expression evaluated: ");
+                        print_history_ast(expr_tree);
+                        printf(" (stored in %s)\n", temp_var);
                     }
                 }
             }

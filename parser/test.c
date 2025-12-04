@@ -181,8 +181,6 @@ void free_ast(AstNode *node)
     free(node);
 }
 
-// --- End of AST Helper Functions ---
-
 // find a variable in the symbol table
 vars *find_variable(const char *id)
 {
@@ -318,6 +316,7 @@ char *extract_variable_name(const char *declaration)
     return name;
 }
 
+// extract the data type from a declaration string
 char *extract_data_type(const char *declaration)
 {
     if (declaration == NULL)
@@ -339,6 +338,7 @@ char *extract_data_type(const char *declaration)
     return type;
 }
 
+// extract the value part from a declaration or assignment string
 char *extract_value(const char *declaration)
 {
     if (declaration == NULL)
@@ -369,6 +369,7 @@ char *extract_value(const char *declaration)
     return value;
 }
 
+// check if line is a var declaration
 int is_declaration(const char *line)
 {
     if (line == NULL)
@@ -389,9 +390,9 @@ int is_declaration(const char *line)
     return result;
 }
 
-// --- PEMDAS-COMPLIANT PARSER (NOW BUILDS AN AST) ---
+// --- PEMDAS-COMPLIANT PARSER ---
 
-// Global helper for the parser
+// gobal helper for the parser
 static const char *g_expr_ptr; // points to the current character in the expression
 static int g_line_num;         // current line number for error reporting
 
@@ -570,7 +571,7 @@ AstNode *parse_expression_to_ast(const char *expression_str, int line_num)
     return tree;
 }
 
-// ---  process_declaration ---
+// ---  process a variable declaration line ---
 void process_declaration(const char *declaration, int line_num)
 {
     if (declaration == NULL)
@@ -635,7 +636,7 @@ void process_declaration(const char *declaration, int line_num)
     free(data_type_str);
 }
 
-// --- process_assignment ---
+// --- process a variable assignment line ---
 void process_assignment(const char *assignment, int line_num)
 {
     if (assignment == NULL)
@@ -672,7 +673,7 @@ void process_assignment(const char *assignment, int line_num)
         free(value);
 }
 
-// PRINT FUnctIONS
+// PRINT symbol table content
 void print_symbol_table()
 {
     if (symbol_table == NULL)
@@ -696,6 +697,7 @@ void print_symbol_table()
     printf("\n");
 }
 
+// prints error lists
 void print_errors()
 {
     if (error_list_head == NULL)
@@ -720,7 +722,7 @@ void print_errors()
     printf("\n");
 }
 
-// Helper to print the AST for debugging
+// helper to print the AST for debugging
 void print_history_ast(AstNode *node)
 {
     if (!node)
@@ -746,6 +748,7 @@ void print_history_ast(AstNode *node)
     }
 }
 
+// prints the operation history with ast
 void print_history()
 {
     if (history_head == NULL)
@@ -776,19 +779,19 @@ void print_history()
 int generate_mips_for_ast(FILE *output_file, AstNode *node)
 {
     if (!node)
-        return 0; // Should not happen (error)
+        return 0; // should not happen (error)
 
     int reg_num;
     switch (node->type)
     {
     case NODE_NUMBER:
-        // Load an immediate value into a new temporary register
+        // load an immediate value into a new temporary register
         reg_num = next_temp_register++;
         fprintf(output_file, "    daddiu r%d, r0, %d\n", reg_num, node->value);
         return reg_num;
 
     case NODE_VARIABLE:
-        // Load the variable's value from memory into a new temporary register
+        // load the variable's value from memory into a new temporary register
         reg_num = next_temp_register++;
         vars *var = find_variable(node->var_name);
         if (var->data_type == TYPE_INT)
@@ -842,6 +845,7 @@ int generate_mips_for_ast(FILE *output_file, AstNode *node)
     return 0;
 }
 
+// generate complete mips64 assembly code from history
 void generate_mips64()
 {
     FILE *output_file = fopen("output.txt", "w");
@@ -864,6 +868,13 @@ void generate_mips64()
     vars *cur_var = symbol_table;
     while (cur_var)
     {
+        // Skip temporary variables in .data section
+        if (strncmp(cur_var->id, "__temp_", 7) == 0)
+        {
+            cur_var = cur_var->next;
+            continue;
+        }
+
         if (cur_var->data_type == TYPE_INT)
         {
             fprintf(output_file, "%s: .space 8\n", cur_var->id);
@@ -892,28 +903,32 @@ void generate_mips64()
             continue;
         }
 
-        // Only generate code if there is an expression
+        // only generate code if there is an expression
         if (current->expression_tree)
         {
-            // Reset the temporary register counter for each new statement
+            // reset the temporary register counter for each new statement
             next_temp_register = 8;
 
-            // Generate all the MIPS for the expression
-            // The final result will be in the register returned by this call
+            // generate all the MIPS for the expression
+            // the final result will be in the register returned by this call
             int final_result_reg = generate_mips_for_ast(output_file, current->expression_tree);
 
-            // store final result from the temp reg into the variable's memory
-            if (dst->data_type == TYPE_INT)
+            // Only store result if it's NOT a temporary variable
+            if (strncmp(current->variable_name, "__temp_", 7) != 0)
             {
-                fprintf(output_file, "    sd r%d, %s(r0)\n", final_result_reg, dst->id);
-                // printf("    sd r%d, %s(r0)\n", final_result_reg, dst->id);
+                // store final result from the temp reg into the variable's memory
+                if (dst->data_type == TYPE_INT)
+                {
+                    fprintf(output_file, "    sd r%d, %s(r0)\n", final_result_reg, dst->id);
+                    // printf("    sd r%d, %s(r0)\n", final_result_reg, dst->id);
+                }
+                else
+                {
+                    fprintf(output_file, "    sb r%d, %s(r0)\n", final_result_reg, dst->id);
+                    // printf("    sb r%d, %s(r0)\n", final_result_reg, dst->id);
+                }
+                fprintf(output_file, "\n");
             }
-            else
-            {
-                fprintf(output_file, "    sb r%d, %s(r0)\n", final_result_reg, dst->id);
-                // printf("    sb r%d, %s(r0)\n", final_result_reg, dst->id);
-            }
-            fprintf(output_file, "\n");
         }
         fprintf(output_file, "\n");
         current = current->next;
@@ -926,7 +941,7 @@ void generate_mips64()
     fclose(output_file);
 }
 
-// Free symbol table memory
+// free symbol table memory
 void free_symbol_table()
 {
     vars *current = symbol_table;
@@ -943,7 +958,7 @@ void free_symbol_table()
     symbol_table = NULL;
 }
 
-// Free error list memory
+// free error list memory
 void free_error_list()
 {
     errorList *current = error_list_head;
@@ -964,7 +979,7 @@ void free_error_list()
     error_list_head = NULL;
 }
 
-// Free history memory
+// free history memory
 void free_history()
 {
     history *current = history_head;
@@ -1000,6 +1015,7 @@ int get_register_number(char *reg)
     return -1;
 }
 
+// prints binary fields of an instruction based format
 void print_binary_fields(uint32_t binary, const char *format_type)
 {
     char output[100];
@@ -1072,6 +1088,7 @@ void print_binary_fields(uint32_t binary, const char *format_type)
     printf("%s", output);
 }
 
+// convert mips to binary and hex
 void convert_mips64_to_binhex(char *filename)
 {
     FILE *file = fopen(filename, "r");
@@ -1310,20 +1327,20 @@ int main()
 
     while (fgets(line, sizeof(line), file) != NULL)
     {
-        // Remove newline
+        // remove newline
         line[strcspn(line, "\n")] = 0;
 
         char *input = line;
 
         while (*input)
         {
-            // Skip whitespace
+            // skip whitespace
             while (isspace(*input))
                 input++;
             if (*input == '\0')
                 break;
 
-            // Find next semicolon
+            // find next semicolon
             char *semicolon = strchr(input, ';');
             char stmt[1024];
 
@@ -1343,12 +1360,12 @@ int main()
                 input = semicolon + 1;
             }
 
-            // Trim trailing whitespace
+            // trim trailing whitespace
             char *end = stmt + strlen(stmt) - 1;
             while (end >= stmt && isspace(*end))
                 *end-- = '\0';
 
-            // Skip empty statements
+            // skip empty statements
             char *start = stmt;
             while (isspace(*start))
                 start++;
@@ -1358,7 +1375,14 @@ int main()
             char temp[1024];
             strcpy(temp, stmt);
 
-            // Remove semicolon and trim for checking if statement is empty
+            // Check if this individual statement has a semicolon
+            if (strchr(temp, ';') == NULL)
+            {
+                add_error(line_num, ERROR_SYNTAX, "Missing semicolon");
+                continue; // Skip this statement
+            }
+
+            // remove semicolon and trim for checking if statement is empty
             char check_empty[1024];
             strcpy(check_empty, temp);
             char *semi = strchr(check_empty, ';');
@@ -1373,33 +1397,35 @@ int main()
             while (check_end > check_ptr && isspace(*check_end))
                 *check_end-- = '\0';
 
-            // Skip completely empty statements (just semicolons)
+            // skip completely empty statements (just semicolons)
             if (*check_ptr == '\0')
+            {
+                tokCount++; // Count the semicolon token
                 continue;
+            }
 
             // === CASE 1: Declaration (starts with int or char) ===
             if (is_declaration(temp))
             {
-                // tokCount += 2; removed
-                // Check if there's actually a variable name after the data type
+                // check if there's actually a variable name after the data type
                 char *temp_copy = strdup(temp);
                 char *data_type_str = extract_data_type(temp_copy);
 
                 if (data_type_str)
                 {
-                    // Check if there's anything after the data type
+                    // check if there's anything after the data type
                     char *after_type = temp_copy + strlen(data_type_str);
                     while (isspace(*after_type))
                         after_type++;
 
-                    // Remove semicolons and whitespace to check if empty
+                    // remove semicolons and whitespace to check if empty
                     char check_var[1024];
                     strcpy(check_var, after_type);
                     char *sc = strchr(check_var, ';');
                     if (sc)
                         *sc = '\0';
 
-                    // Trim
+                    // trim
                     char *cv_ptr = check_var;
                     while (isspace(*cv_ptr))
                         cv_ptr++;
@@ -1407,7 +1433,7 @@ int main()
                     while (cv_end > cv_ptr && isspace(*cv_end))
                         *cv_end-- = '\0';
 
-                    // If nothing after data type, it's an error
+                    // if nothing after data type, it's an error
                     if (*cv_ptr == '\0')
                     {
                         add_error(line_num, ERROR_SYNTAX, "Data type without variable name");
@@ -1430,13 +1456,12 @@ int main()
             // === CASE 2: Assignment (has = and left side is identifier) ===
             else if (strchr(temp, '=') != NULL)
             {
-                // tokCount += 2; removed
                 char *eq = strchr(temp, '=');
                 char lhs[256] = {0};
                 strncpy(lhs, temp, eq - temp);
                 lhs[eq - temp] = '\0';
 
-                // Trim lhs
+                // trim lhs
                 char *p = lhs;
                 while (isspace(*p))
                     p++;
@@ -1444,23 +1469,26 @@ int main()
                 while (q > p && isspace(*q))
                     *q-- = '\0';
 
-                // If left side is a valid identifier → assignment
+                // if left side is a valid identifier then it is an assignment line
                 if (isalpha(p[0]) || p[0] == '_')
                 {
                     process_assignment(temp, line_num);
                 }
             }
-            // === CASE 3: Pure expression (no =) → evaluate and store in temp ===
+            // === CASE 3: Pure expression (no =) then evaluate and store in temp ===
             else
             {
-                // Remove semicolon before parsing
+                // remove semicolon before parsing
                 char expr_str[1024];
                 strcpy(expr_str, temp);
                 char *semicolon_pos = strchr(expr_str, ';');
                 if (semicolon_pos)
+                {
+                    tokCount++; // Count the semicolon
                     *semicolon_pos = '\0';
+                }
 
-                // Trim any trailing whitespace
+                // trim any trailing whitespace
                 char *trim_end = expr_str + strlen(expr_str) - 1;
                 while (trim_end > expr_str && isspace(*trim_end))
                 {
@@ -1468,24 +1496,28 @@ int main()
                     trim_end--;
                 }
 
-                // Parse the expression to build AST
-                AstNode *expr_tree = parse_expression_to_ast(expr_str, line_num);
+                // Skip if expression is empty after removing semicolon
+                char *expr_start = expr_str;
+                while (isspace(*expr_start))
+                    expr_start++;
+
+                if (*expr_start == '\0')
+                    continue;
+
+                // parse the expression to build AST
+                AstNode *expr_tree = parse_expression_to_ast(expr_start, line_num);
 
                 if (expr_tree != NULL)
                 {
-                    // Create a temporary variable name for the result
+                    // create a temporary variable name for the result
                     char temp_var[32];
                     sprintf(temp_var, "__temp_%d", line_num);
 
-                    // Add temporary variable to symbol table
+                    // add temporary variable to symbol table
                     if (add_variable(temp_var, TYPE_INT, line_num))
                     {
-                        // Add to history as a special "EXPRESSION" type assignment
+                        // add to history as a special "EXPRESSION" type assignment
                         add_history_entry(line_num, OP_ASSIGNMENT, temp_var, TYPE_INT, expr_tree, temp);
-
-                        printf("  -> Pure expression evaluated: ");
-                        print_history_ast(expr_tree);
-                        printf(" (stored in %s)\n", temp_var);
                     }
                 }
             }
